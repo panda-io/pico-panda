@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cb12yxym2fuxi"]
+
+[ext_resource type="Script" uid="uid://jar5clhr3cd1" path="res://panda_vm/panda_vm.gd" id="1_wml5s"]
+
+[node name="PandaVm" type="Node2D" unique_id=1184648322]
+script = ExtResource("1_wml5s")
