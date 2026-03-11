@@ -359,12 +359,12 @@ Input is split into lines before pass 1. File and string sources are identical a
 
 | Instruction | Size |
 | :--- | :---: |
-| No operand (arithmetic, stack ops, MEM_*) | 1 |
-| `LOAD_LOCAL` / `STORE_LOCAL` | 2 (opcode + 1-byte slot) |
+| No operand (arithmetic, stack ops) | 1 |
 | `SYSCALL` / `EVENT` | 2 (opcode + 1-byte subcode) |
-| `LOAD_GLOBAL` / `STORE_GLOBAL` / `ADDR_GLOBAL` | 3 (opcode + 2-byte offset) |
 | `JMP*` / `CALL` | 3 (opcode + 2-byte address) |
 | `PUSH` / `PUSH_FLOAT` / `PUSH_STR` | 5 (opcode + 4-byte value) |
+
+> `LOAD_LOCAL`, `STORE_LOCAL`, `LOAD_GLOBAL`, `STORE_GLOBAL`, `ADDR_GLOBAL`, and `MEM_*` are **not in v1** — sizes TBD.
 
 ---
 

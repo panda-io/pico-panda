@@ -132,7 +132,7 @@ vm_send(vm, SIGNAL_TICK,  NULL);   // SIGNAL_TICK  = 2
 
 Any signal name not in the system table is **user-defined**. The assembler collects all user signal names in pass 1 and assigns sequential IDs starting at `0x100`:
 
-```
+```plaintext
 first user signal  → 0x100
 second user signal → 0x101
 ...
@@ -174,17 +174,9 @@ All opcodes are 1 byte. Multi-byte operands are little-endian.
 | Mnemonic | Opcode | Operand | Description |
 | :--- | :---: | :--- | :--- |
 | `PUSH <val>` | 0x01 | i32 (4 bytes) | Push 32-bit immediate |
-| `LOAD_GLOBAL <offset>` | 0x02 | u16 (2 bytes) | Load 4-byte word from global segment at byte offset |
-| `STORE_GLOBAL <offset>` | 0x03 | u16 (2 bytes) | Pop → store 4-byte word at global byte offset |
-| `LOAD_LOCAL <slot>` | 0x04 | u8 | Push local variable (current frame, slot 0–15) |
-| `STORE_LOCAL <slot>` | 0x05 | u8 | Pop → local variable (current frame) |
-| `ADDR_GLOBAL <offset>` | 0x06 | u16 (2 bytes) | Push byte address of global (for arrays / struct fields) |
-| `MEM_LOAD_INT` | 0x07 | — | Pop addr → push 4-byte int from VM memory |
-| `MEM_STORE_INT` | 0x08 | — | Pop int, pop addr → store 4 bytes to VM memory |
-| `MEM_LOAD_BYTE` | 0x09 | — | Pop addr → push 1 byte (zero-extended) from VM memory |
-| `MEM_STORE_BYTE` | 0x0A | — | Pop int (low byte), pop addr → store 1 byte to VM memory |
 
-`LOAD_GLOBAL` / `STORE_GLOBAL` are optimised shortcuts for scalar globals — equivalent to `ADDR_GLOBAL offset; MEM_LOAD_INT` but encoded in 3 bytes instead of 4.
+> `LOAD_GLOBAL`, `STORE_GLOBAL`, `LOAD_LOCAL`, `STORE_LOCAL`, `ADDR_GLOBAL`, and `MEM_*` are **not included in v1**.
+> They will be designed once struct support requirements are clearer — the right encoding depends on whether fields stay uniform 4-byte slots or need variable-size access.
 
 ### Stack
 

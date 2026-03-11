@@ -27,20 +27,23 @@ A lightweight stack-based virtual machine designed to run tiny programs on both 
 
 ## Key Design Decisions
 
-**Types (VM level)**
+### Types (VM level)
+
 - `int` — 32-bit signed integer
 - `fixed` — 16.16 fixed-point (same as Micro-Panda `fixed`)
 - `bool` — 0 or 1, stored as int
 
 No native float type. Float literals in ASM (`1.5`) are pseudo-syntax — converted to `fixed` by the assembler at compile time.
 
-**String / byte array naming**
+### String / byte array naming
+
 - VM level: no string type — strings are byte arrays accessed by address
 - ASM level: `"..."` string literals → stored in the constant pool, pushed as address
 - Language level (future): `str` — read-only, length-prefixed, lives in const ROM
 - Implementation type: `byte[]` (preferred over `u8[]` — more readable, matches the language domain)
 
-**Execution model**
+### Execution model
+
 - Stack machine: 8-slot evaluation stack
 - 4 general-purpose registers: R0–R3 (for passing event data)
 - Cooperative multitasking: tasks yield via sleep or event wait, no preemption
@@ -50,7 +53,7 @@ All pool sizes are compile-time constants — no dynamic allocation at runtime.
 
 ## Directory Structure
 
-```
+```plaintext
 docs/
   vm.md       VM specification
   asm.md      ASM specification
