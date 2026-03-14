@@ -1,5 +1,6 @@
 import task::Task
 import task::TaskState
+import task::REGISTER_SIZE
 import handler::Handler
 import event::Event
 import config::*
@@ -9,17 +10,18 @@ import opcode::*
 // Single instance holds both system and app contexts plus the shared event bus.
 
 class VM()
+    val _tasks:                Task[SYS_MAX_TASKS + APP_MAX_TASKS]
+    val _handlers:             Handler[SYS_MAX_HANDLERS + APP_MAX_HANDLERS]
+
     // ── System context ───────────────────────────────────────────────────────
     var _sys_code:             u8[]
-    var _sys_tasks:            Task[SYS_MAX_TASKS]
-    var _sys_handlers:         Handler[SYS_MAX_HANDLERS]
-    var _sys_h_count:          i32
+    var _sys_tasks:            Task[]
+    var _sys_handlers:         Handler[]
 
     // ── Application context ──────────────────────────────────────────────────
     var _app_code:             u8[]
-    var _app_tasks:            Task[APP_MAX_TASKS]
-    var _app_handlers:         Handler[APP_MAX_HANDLERS]
-    var _app_h_count:          i32
+    var _app_tasks:            Task[]
+    var _app_handlers:         Handler[]
 
     // ── Shared event queue (ring buffer) ─────────────────────────────────────
     var _events:               Event[VM_MAX_EVENTS]
@@ -33,22 +35,21 @@ class VM()
     // ── Init / reset ─────────────────────────────────────────────────────────
 
     fun reset()
-        _sys_code = {null, 0}
-        _app_code = {null, 0}
-        _sys_h_count = 0
-        _app_h_count = 0
+        _sys_code     = {null, 0}
+        _app_code     = {null, 0}
+        _sys_tasks    = {&_tasks[0], u32(SYS_MAX_TASKS)}
+        _sys_handlers = {&_handlers[0], u32(SYS_MAX_HANDLERS)}
+        _app_tasks    = {&_tasks[SYS_MAX_TASKS], u32(APP_MAX_TASKS)}
+        _app_handlers = {&_handlers[SYS_MAX_HANDLERS], u32(APP_MAX_HANDLERS)}
         _ev_head = 0
         _ev_tail = 0
         _ev_size = 0
         output   = 0
-        var i: i32 = 0
-        while i < SYS_MAX_TASKS
-            _sys_tasks[i].active = false
-            i++
-        i = 0
-        while i < APP_MAX_TASKS
-            _app_tasks[i].active = false
-            i++
+        for handler: &Handler in _handlers
+            handler.active = false
+            handler.task = null
+        for &task in _tasks
+            task.active = false
 
     // ── Code loading ─────────────────────────────────────────────────────────
 
@@ -61,140 +62,124 @@ class VM()
     // ── Boot ─────────────────────────────────────────────────────────────────
 
     fun boot_sys()
-        val t: i32 = _sys_spawn(0)
-        if t >= 0
-            _sys_run(t)
+        val task: &Task = _spawn_task(0, _sys_tasks)
+        if task != null
+            _run_execute(task, _sys_code, _sys_handlers)
+            if task.state == TaskState.FINISHED
+                task.active = false
 
     fun boot_app()
-        val t: i32 = _app_spawn(0)
-        if t >= 0
-            _app_run(t)
-
-    // ── Event bus ────────────────────────────────────────────────────────────
-
-    fun send(id: i32)
-        if _ev_size >= VM_MAX_EVENTS
-            return
-        _events[_ev_tail].id = id
-        _ev_tail = (_ev_tail + 1) % VM_MAX_EVENTS
-        _ev_size++
+        val task: &Task = _spawn_task(0, _app_tasks)
+        if task != null
+            _run_execute(task, _app_code, _app_handlers)
+            if task.state == TaskState.FINISHED
+                task.active = false
 
     // ── Tick ─────────────────────────────────────────────────────────────────
 
     fun tick()
         // 1. Wake sleeping tasks
-        _sys_wake()
-        _app_wake()
+        for task: &Task in _sys_tasks
+            _task_wake(task)
+        for task: &Task in _app_tasks
+            _task_wake(task)
+
         // 2. Dispatch queued events to both contexts
         while _ev_size > 0
-            val ev_id: i32 = _events[_ev_head].id
+            val ev: &Event = &_events[_ev_head]
             _ev_head = (_ev_head + 1) % VM_MAX_EVENTS
             _ev_size--
-            _sys_dispatch(ev_id)
-            _app_dispatch(ev_id)
+            _dispatch_event(ev)
+
         // 3. Run active tasks
-        _sys_run_all()
-        _app_run_all()
+        for task: &Task in _sys_tasks
+            if task.active && task.state == TaskState.RUNNING
+                _run_execute(task, _sys_code, _sys_handlers)
+                if task.state == TaskState.FINISHED
+                    task.active = false
+                    _update_handler(task, _sys_handlers)
 
-    // ── Private: system context ───────────────────────────────────────────────
+        for task: &Task in _app_tasks
+            if task.active && task.state == TaskState.RUNNING
+                _run_execute(task, _app_code, _app_handlers)
+                if task.state == TaskState.FINISHED
+                    task.active = false
+                    _update_handler(task, _app_handlers)
 
-    fun _sys_wake()
-        var i: i32 = 0
-        while i < SYS_MAX_TASKS
-            if _sys_tasks[i].active && _sys_tasks[i].state == TaskState.SLEEPING
-                _sys_tasks[i].sleep = _sys_tasks[i].sleep - 1
-                if _sys_tasks[i].sleep <= 0
-                    _sys_tasks[i].state = TaskState.RUNNING
-            i++
+    // ── Private: task helpers ─────────────────────────────────────────────────
 
-    fun _sys_run_all()
-        var i: i32 = 0
-        while i < SYS_MAX_TASKS
-            if _sys_tasks[i].active && _sys_tasks[i].state == TaskState.RUNNING
-                _sys_run(i)
-            i++
+    @inline
+    fun _task_wake(task: &Task)
+        if task.active && task.state == TaskState.SLEEPING
+            task.sleep -= 1
+            if task.sleep <= 0
+                task.state = TaskState.RUNNING
 
-    fun _sys_dispatch(ev_id: i32)
-        var i: i32 = 0
-        while i < _sys_h_count
-            if _sys_handlers[i].event_id == ev_id
-                val ht: i32 = _sys_handlers[i].task
-                if ht >= 0
-                    _sys_tasks[ht].state = TaskState.RUNNING
+    @inline
+    fun _update_handler(task: &Task, handlers: Handler[])
+        for handler: &Handler in handlers
+            if handler.task == task
+                handler.task = null
+
+    @inline
+    fun _spawn_task(addr: i32, tasks: Task[]) &Task
+        for task: &Task in tasks
+            if !task.active
+                task.reset(addr)
+                return task
+        return null
+
+    // ── Private: event helpers ────────────────────────────────────────────────
+
+    @inline
+    fun _save_event_data(event: &Event, task: &Task)
+        for i: i32 in range(0, REGISTER_SIZE)
+            event.regs[i] = task.regs[i]
+
+    @inline
+    fun _load_event_data(event: &Event, task: &Task)
+        for i: i32 in range(0, REGISTER_SIZE)
+            task.regs[i] = event.regs[i]
+
+    @inline
+    fun _dispatch_event(event: &Event)
+        for handler: &Handler in _sys_handlers
+            _process_event(event, handler, _sys_code, _sys_handlers, _sys_tasks)
+        for handler: &Handler in _app_handlers
+            _process_event(event, handler, _app_code, _app_handlers, _app_tasks)
+
+    @inline
+    fun _process_event(event: &Event, handler: &Handler, code: u8[], handlers: Handler[], tasks: Task[])
+        // ignore handlers if its task is suspended (sleeping) or not active
+        if handler.active && handler.event_id == event.id && handler.task == null
+            val task: &Task = _spawn_task(handler.addr, tasks)
+            if task != null
+                _load_event_data(event, task)
+                _run_execute(task, code, handlers)
+                if task.state == TaskState.FINISHED
+                    task.active = false
                 else
-                    val t: i32 = _sys_spawn(_sys_handlers[i].addr)
-                    if t >= 0
-                        _sys_handlers[i].task = t
-            i++
+                    // task is suspended, keep the handler→task link
+                    handler.task = task
 
-    fun _sys_spawn(addr: i32) i32
-        var i: i32 = 0
-        while i < SYS_MAX_TASKS
-            if !_sys_tasks[i].active
-                _sys_tasks[i].reset(addr)
-                return i
-            i++
-        return -1
+    @inline
+    fun _send(id: i32, task: &Task)
+        if _ev_size >= VM_MAX_EVENTS
+            return
+        _events[_ev_tail].id = id
+        _save_event_data(&_events[_ev_tail], task)
+        _ev_tail = (_ev_tail + 1) % VM_MAX_EVENTS
+        _ev_size++
 
-    fun _sys_run(t: i32)
-        val done: bool = _sys_execute(t)
-        if done
-            var i: i32 = 0
-            while i < _sys_h_count
-                if _sys_handlers[i].task == t
-                    _sys_handlers[i].task = -1
-                i++
-            _sys_tasks[t].active = false
-
-    // ── Private: app context ──────────────────────────────────────────────────
-
-    fun _app_wake()
-        var i: i32 = 0
-        while i < APP_MAX_TASKS
-            if _app_tasks[i].active && _app_tasks[i].state == TaskState.SLEEPING
-                _app_tasks[i].sleep = _app_tasks[i].sleep - 1
-                if _app_tasks[i].sleep <= 0
-                    _app_tasks[i].state = TaskState.RUNNING
-            i++
-
-    fun _app_run_all()
-        var i: i32 = 0
-        while i < APP_MAX_TASKS
-            if _app_tasks[i].active && _app_tasks[i].state == TaskState.RUNNING
-                _app_run(i)
-            i++
-
-    fun _app_dispatch(ev_id: i32)
-        var i: i32 = 0
-        while i < _app_h_count
-            if _app_handlers[i].event_id == ev_id
-                val ht: i32 = _app_handlers[i].task
-                if ht >= 0
-                    _app_tasks[ht].state = TaskState.RUNNING
-                else
-                    val t: i32 = _app_spawn(_app_handlers[i].addr)
-                    if t >= 0
-                        _app_handlers[i].task = t
-            i++
-
-    fun _app_spawn(addr: i32) i32
-        var i: i32 = 0
-        while i < APP_MAX_TASKS
-            if !_app_tasks[i].active
-                _app_tasks[i].reset(addr)
-                return i
-            i++
-        return -1
-
-    fun _app_run(t: i32)
-        val done: bool = _app_execute(t)
-        if done
-            var i: i32 = 0
-            while i < _app_h_count
-                if _app_handlers[i].task == t
-                    _app_handlers[i].task = -1
-                i++
-            _app_tasks[t].active = false
+    @inline
+    fun send_event(id: i32)
+        if _ev_size >= VM_MAX_EVENTS
+            return
+        _events[_ev_tail].id = id
+        for i: i32 in range(0, REGISTER_SIZE)
+            _events[_ev_tail].regs[i] = 0
+        _ev_tail = (_ev_tail + 1) % VM_MAX_EVENTS
+        _ev_size++
 
     // ── Private: read helpers ─────────────────────────────────────────────────
 
@@ -208,19 +193,7 @@ class VM()
 
     // ── Execute loops ─────────────────────────────────────────────────────────
 
-    fun _sys_execute(t: i32) bool
-        val task: &Task = &_sys_tasks[t]
-        val hs: Handler[] = {&_sys_handlers[0], u32(SYS_MAX_HANDLERS)}
-        _sys_h_count = _run_execute(task, _sys_code, hs, _sys_h_count)
-        return task.state == TaskState.FINISHED
-
-    fun _app_execute(t: i32) bool
-        val task: &Task = &_app_tasks[t]
-        val hs: Handler[] = {&_app_handlers[0], u32(APP_MAX_HANDLERS)}
-        _app_h_count = _run_execute(task, _app_code, hs, _app_h_count)
-        return task.state == TaskState.FINISHED
-
-    fun _run_execute(task: &Task, code: u8[], handlers: Handler[], h_count: i32) i32
+    fun _run_execute(task: &Task, code: u8[], handlers: Handler[])
         var pc: i32 = task.pc
         task.state = TaskState.RUNNING
 
@@ -397,23 +370,23 @@ class VM()
                         EVENT_CREATE_HANDLER:
                             val ha: i32 = task.pop()
                             val he: i32 = task.pop()
-                            if h_count < i32(handlers.size)
-                                handlers[h_count].init(he, ha)
-                                h_count++
+                            for handler: &Handler in handlers
+                                if !handler.active
+                                    handler.init(he, ha)
+                                    break
                         EVENT_EXIT_HANDLER:
                             task.state = TaskState.FINISHED
                         EVENT_HANDLER_SLEEP:
                             task.sleep = task.pop()
                             task.state = TaskState.SLEEPING
                         EVENT_SEND:
-                            send(task.pop())
+                            _send(task.pop(), task)
                         _:
                             task.state = TaskState.FINISHED
                 _:
                     task.state = TaskState.FINISHED
 
         task.pc = pc
-        return h_count
 
 // ── Module-level singleton ────────────────────────────────────────────────────
 
@@ -437,7 +410,7 @@ fun vm_boot_app()
     vm.boot_app()
 
 fun vm_send(id: i32)
-    vm.send(id)
+    vm.send_event(id)
 
 fun vm_tick()
     vm.tick()

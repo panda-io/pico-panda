@@ -1,12 +1,16 @@
+import task::Task
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 class Handler()
+    var active: bool
     var event_id: i32          // event_id this handler listens to
     var addr:  i32          // bytecode entry address
-    var task:  i32          // active task slot (-1 = none)
+    var task:  &Task          // active task slot (-1 = none)
 
     @inline
     fun init(ev: i32, a: i32)
         event_id = ev
         addr  = a
-        task  = -1
+        task  = null
+        active = true

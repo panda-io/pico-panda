@@ -1,4 +1,5 @@
 const STACK_SIZE: i32 = 8
+const REGISTER_SIZE: i32 = 4
 
 // ── Task state ────────────────────────────────────────────────────────────────
 
@@ -16,7 +17,8 @@ class Task()
     var state:  TaskState
     var sleep:  i32
     var active: bool
-    var stack:  i32[8]      // evaluation stack (STACK_SIZE slots)
+    var stack:  i32[STACK_SIZE]      // evaluation stack (STACK_SIZE slots)
+    var regs:   i32[REGISTER_SIZE]
 
     @inline
     fun reset(addr: i32)
@@ -26,6 +28,8 @@ class Task()
         state  = TaskState.RUNNING
         sleep  = 0
         active = true
+        for i: i32 in range(0, REGISTER_SIZE)
+            regs[i] = 0    
 
     @inline
     fun push(v: i32)

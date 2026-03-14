@@ -11,7 +11,7 @@ const VM_MAX_EVENTS:   i32 = 32
 
 // System VM runtime limits (lightweight: boot, I/O, scheduler)
 const SYS_MEMORY_SIZE:  i32 = 1024
-const SYS_MAX_TASKS:    i32 = 1
+const SYS_MAX_TASKS:    i32 = 2
 const SYS_MAX_HANDLERS: i32 = 4
 
 // Application VM runtime limits
