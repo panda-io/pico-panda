@@ -1,0 +1,6 @@
+import vm::VM
+
+val vm := VM()
+
+fun main() i32
+    return 0

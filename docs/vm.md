@@ -37,30 +37,36 @@ Alignment rules:
 
 Example layout:
 
-```mpd
-var score: int       → offset 0   (4 bytes)
-var gravity: fixed   → offset 4   (4 bytes)
-var alive: bool      → offset 8   (4 bytes)
-var buf: byte[256]   → offset 12  (256 bytes)
-var pool: int[64]    → offset 268 (256 bytes, padded to 4-byte boundary from 268)
+```
+var score: int       → offset 0    (4 bytes)
+var gravity: fixed   → offset 4    (4 bytes)
+var alive: bool      → offset 8    (4 bytes)
+var buf: byte[256]   → offset 12   (256 bytes)
+var pool: int[64]    → offset 268  (256 bytes, next 4-byte boundary)
+var view: byte[]     → offset 524  (4 bytes — packed dword: len:u16 | ptr:u16)
 ```
 
 The assembler emits a `global_size` value in the bytecode header; the VM allocates exactly that many bytes and zero-fills them before executing any instruction.
 
-### Struct Layout
+### Slice Encoding
 
-Fields in declaration order. Each field follows the alignment rules above.
-Struct size is rounded up to a multiple of 4.
+A slice (`T[]`) is a **packed 32-bit integer** — one stack slot, no hidden struct.
 
-```mpd
-struct Vec2           struct Sprite
-  x: fixed            pos: Vec2      → 8 bytes (inlined)
-  y: fixed            hp: int        → 4 bytes
-// size: 8            name: byte[]   → 8 bytes (ptr u32 + len u32)
-                    // size: 20
+```
+ 31          16 15           0
+ ┌────────────┬──────────────┐
+ │  len (u16) │  ptr  (u16)  │
+ └────────────┴──────────────┘
 ```
 
-Structs are **value types**: stored inline in the global segment. Accessed via `ADDR_GLOBAL` + `MEM_LOAD_INT` / `MEM_STORE_INT`.
+Both fields are 16-bit unsigned values. This works because both the global segment
+and the code segment are at most 64 KB (16-bit addressable).
+
+- `ptr = dword & 0xFFFF` — byte offset into the global segment
+- `len = (dword >> 16) & 0xFFFF` — number of elements
+
+The compiler emits the bit extraction and `MEM_LOAD_*` / `MEM_STORE_*` opcodes
+for `s[i]` and `s.len` accesses. Programs never pack or unpack the dword manually.
 
 ### Constant Pool
 

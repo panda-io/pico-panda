@@ -1,0 +1,55 @@
+const STACK_SIZE: i32 = 8
+
+// ── Task state ────────────────────────────────────────────────────────────────
+
+enum TaskState
+    RUNNING
+    SLEEPING
+    FINISHED
+
+// ── Task ──────────────────────────────────────────────────────────────────────
+
+class Task()
+    var pc:     i32
+    var sp:     i32
+    var frame:  i32
+    var state:  TaskState
+    var sleep:  i32
+    var active: bool
+    var stack:  i32[8]      // evaluation stack (STACK_SIZE slots)
+
+    @inline
+    fun reset(addr: i32)
+        pc     = addr
+        sp     = 0
+        frame  = 0
+        state  = TaskState.RUNNING
+        sleep  = 0
+        active = true
+
+    @inline
+    fun push(v: i32)
+        if sp >= STACK_SIZE
+            return
+        stack[sp] = v
+        sp = sp + 1
+
+    @inline
+    fun pop() i32
+        if sp <= 0
+            return 0
+        sp = sp - 1
+        return stack[sp]
+
+    @inline
+    fun peek() i32
+        if sp <= 0
+            return 0
+        return stack[sp - 1]
+
+    @inline
+    fun push_bool(cond: bool)
+        if cond
+            push(1)
+        else
+            push(0)

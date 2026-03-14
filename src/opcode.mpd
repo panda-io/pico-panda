@@ -1,0 +1,69 @@
+// ── Opcodes ───────────────────────────────────────────────────────────────────
+
+// Immediate
+const OP_PUSH:          i32 = 0x01  // PUSH i32 (4-byte little-endian)
+
+// Stack
+const OP_DUP:           i32 = 0x18
+const OP_SWAP:          i32 = 0x19
+const OP_DROP:          i32 = 0x1A
+
+// Integer arithmetic
+const OP_ADD_INT:       i32 = 0x20
+const OP_SUB_INT:       i32 = 0x21
+const OP_MUL_INT:       i32 = 0x22
+const OP_DIV_INT:       i32 = 0x23
+const OP_MOD_INT:       i32 = 0x24
+const OP_NEG_INT:       i32 = 0x25
+const OP_SHL_INT:       i32 = 0x26
+const OP_SHR_INT:       i32 = 0x27  // logical, zero-fill
+const OP_SAR_INT:       i32 = 0x28  // arithmetic, sign-fill
+const OP_AND:           i32 = 0x29
+const OP_OR:            i32 = 0x2A
+const OP_XOR:           i32 = 0x2B
+const OP_NOT:           i32 = 0x2C
+
+// Fixed-point arithmetic (16.16)
+const OP_ADD_FIXED:     i32 = 0x40
+const OP_SUB_FIXED:     i32 = 0x41
+const OP_MUL_FIXED:     i32 = 0x42  // (a * b) >> 16 via i64
+const OP_DIV_FIXED:     i32 = 0x43  // (a << 16) / b via i64
+const OP_NEG_FIXED:     i32 = 0x44
+const OP_INT_TO_FIXED:  i32 = 0x45  // a << 16
+const OP_FIXED_TO_INT:  i32 = 0x46  // a >> 16
+
+// Integer comparison
+const OP_CMP_EQ_INT:    i32 = 0x50
+const OP_CMP_NE_INT:    i32 = 0x51
+const OP_CMP_LT_INT:    i32 = 0x52
+const OP_CMP_LE_INT:    i32 = 0x53
+const OP_CMP_GT_INT:    i32 = 0x54
+const OP_CMP_GE_INT:    i32 = 0x55
+
+// Fixed-point comparison
+const OP_CMP_EQ_FIXED:  i32 = 0x56
+const OP_CMP_NE_FIXED:  i32 = 0x57
+const OP_CMP_LT_FIXED:  i32 = 0x58
+const OP_CMP_LE_FIXED:  i32 = 0x59
+const OP_CMP_GT_FIXED:  i32 = 0x5A
+const OP_CMP_GE_FIXED:  i32 = 0x5B
+
+// Control flow
+const OP_JMP:           i32 = 0x60  // JMP addr (u16)
+const OP_JMP_IF_TRUE:   i32 = 0x61  // JMP_IF_TRUE addr (u16)
+const OP_JMP_IF_FALSE:  i32 = 0x62  // JMP_IF_FALSE addr (u16)
+const OP_CALL:          i32 = 0x63  // CALL addr (u16); args are dropped, no locals
+const OP_RET:           i32 = 0x64  // RET
+
+// System calls (opcode 0x70 + subcode)
+const OP_SYSCALL:       i32 = 0x70
+const SYSCALL_PRINT_INT:   i32 = 0x01
+const SYSCALL_PRINT_FIXED: i32 = 0x02
+const SYSCALL_PRINT_STR:   i32 = 0x03
+
+// Events (opcode 0x71 + subcode)
+const OP_EVENT:         i32 = 0x71
+const EVENT_CREATE_HANDLER: i32 = 0x01
+const EVENT_EXIT_HANDLER:   i32 = 0x02
+const EVENT_HANDLER_SLEEP:  i32 = 0x03
+const EVENT_SEND:           i32 = 0x04

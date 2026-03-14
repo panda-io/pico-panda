@@ -1,0 +1,331 @@
+import task::Task
+import task::TaskState
+import handler::Handler
+import event::Event
+import config::*
+import opcode::*
+import memory::Allocator
+import collection::RingBuffer
+
+// ── VM class ──────────────────────────────────────────────────────────────────
+
+class VM()
+    var _sys_code:                  u8[]
+    var _sys_tasks:                 Task[SYS_MAX_TASKS]      
+    var _sys_handlers:              Handler[SYS_MAX_HANDLERS]
+    var _sys_handlers_count:        i32
+
+    var _app_code:                  u8[]
+    var _app_tasks:                 Task[APP_MAX_TASKS] 
+    var _app_handlers:              Handler[APP_MAX_HANDLERS]
+    var _app_handlers_count:        i32
+
+    var _events:                    Event[VM_MAX_EVENTS]
+    var _events_head:               i32
+    var _events_tail:               i32
+
+    fun init(max_tasks: i32, max_handlers: i32)
+        _max_tasks    = max_tasks
+        _max_handlers = max_handlers
+        _h_count = 0
+        _code    = {null, 0}
+        var i: i32 = 0
+        while i < _max_tasks
+            _tasks[i].active = false
+            i++
+
+    fun reset()
+        _h_count = 0
+        _code    = {null, 0}
+        var i: i32 = 0
+        while i < _max_tasks
+            _tasks[i].active = false
+            i++
+
+    fun load(code: u8[])
+        _code = code
+
+    fun boot()
+        val t: i32 = _spawn(0)
+        if t >= 0
+            _run(t)
+
+    fun tick_wake()
+        var i: i32 = 0
+        while i < _max_tasks
+            if _tasks[i].active && _tasks[i].state == TaskState.SLEEPING
+                _tasks[i].sleep = _tasks[i].sleep - 1
+                if _tasks[i].sleep <= 0
+                    _tasks[i].state = TaskState.RUNNING
+            i++
+
+    fun tick_run()
+        var i: i32 = 0
+        while i < _max_tasks
+            if _tasks[i].active && _tasks[i].state == TaskState.RUNNING
+                _run(i)
+            i++
+
+    fun dispatch(ev_id: i32)
+        var i: i32 = 0
+        while i < _h_count
+            if _handlers[i].event_id == ev_id
+                val ht: i32 = _handlers[i].task
+                if ht >= 0
+                    _tasks[ht].state = TaskState.RUNNING
+                else
+                    val t: i32 = _spawn(_handlers[i].addr)
+                    if t >= 0
+                        _handlers[i].task = t
+            i++
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    fun _spawn(addr: i32) i32
+        var i: i32 = 0
+        while i < _max_tasks
+            if !_tasks[i].active
+                _tasks[i].reset(addr)
+                return i
+            i++
+        return -1
+
+    fun _run(t: i32)
+        val done: bool = _execute(t)
+        if done
+            var i: i32 = 0
+            while i < _h_count
+                if _handlers[i].task == t
+                    _handlers[i].task = -1
+                i++
+            _tasks[t].active = false
+
+    @inline
+    fun _read_i32le(pc: i32) i32
+        return i32(_code[pc]) | (i32(_code[pc + 1]) << 8) | (i32(_code[pc + 2]) << 16) | (i32(_code[pc + 3]) << 24)
+
+    @inline
+    fun _read_u16(pc: i32) i32
+        return i32(_code[pc]) | (i32(_code[pc + 1]) << 8)
+
+    // ── Execute loop ──────────────────────────────────────────────────────────
+
+    fun _execute(t: i32) bool
+        val task: &Task = &_tasks[t]
+        var pc: i32 = task.pc
+        task.state = TaskState.RUNNING
+
+        while task.state == TaskState.RUNNING
+            if pc >= i32(_code.size)
+                task.state = TaskState.FINISHED
+                continue
+            val op: i32 = i32(_code[pc])
+            pc++
+
+            match op
+                // ── Immediate ────────────────────────────────────────────────
+                OP_PUSH:
+                    task.push(_read_i32le(pc))
+                    pc += 4
+
+                // ── Stack ────────────────────────────────────────────────────
+                OP_DUP:
+                    task.push(task.peek())
+                OP_SWAP:
+                    val top: i32 = task.pop()
+                    val sec: i32 = task.pop()
+                    task.push(top)
+                    task.push(sec)
+                OP_DROP:
+                    task.pop()
+
+                // ── Integer arithmetic ───────────────────────────────────────
+                OP_ADD_INT:
+                    val b: i32 = task.pop()
+                    task.push(task.pop() + b)
+                OP_SUB_INT:
+                    val b: i32 = task.pop()
+                    task.push(task.pop() - b)
+                OP_MUL_INT:
+                    val b: i32 = task.pop()
+                    task.push(task.pop() * b)
+                OP_DIV_INT:
+                    val b: i32 = task.pop()
+                    val a: i32 = task.pop()
+                    if b != 0
+                        task.push(a / b)
+                    else
+                        task.push(0)
+                OP_MOD_INT:
+                    val b: i32 = task.pop()
+                    val a: i32 = task.pop()
+                    if b != 0
+                        task.push(a % b)
+                    else
+                        task.push(0)
+                OP_NEG_INT:
+                    task.push(-task.pop())
+                OP_SHL_INT:
+                    val b: i32 = task.pop()
+                    task.push(task.pop() << b)
+                OP_SHR_INT:
+                    val b: i32 = task.pop()
+                    task.push(i32(u32(task.pop()) >> u32(b)))
+                OP_SAR_INT:
+                    val b: i32 = task.pop()
+                    task.push(task.pop() >> b)
+                OP_AND:
+                    val b: i32 = task.pop()
+                    task.push(task.pop() & b)
+                OP_OR:
+                    val b: i32 = task.pop()
+                    task.push(task.pop() | b)
+                OP_XOR:
+                    val b: i32 = task.pop()
+                    task.push(task.pop() ^ b)
+                OP_NOT:
+                    task.push(~task.pop())
+
+                // ── Fixed-point arithmetic (16.16) ───────────────────────────
+                OP_ADD_FIXED:
+                    val b: i32 = task.pop()
+                    task.push(task.pop() + b)
+                OP_SUB_FIXED:
+                    val b: i32 = task.pop()
+                    task.push(task.pop() - b)
+                OP_MUL_FIXED:
+                    val b: i32 = task.pop()
+                    val a: i32 = task.pop()
+                    task.push(i32((i64(a) * i64(b)) >> 16))
+                OP_DIV_FIXED:
+                    val b: i32 = task.pop()
+                    val a: i32 = task.pop()
+                    if b != 0
+                        task.push(i32((i64(a) << 16) / i64(b)))
+                    else
+                        task.push(0)
+                OP_NEG_FIXED:
+                    task.push(-task.pop())
+                OP_INT_TO_FIXED:
+                    task.push(task.pop() << 16)
+                OP_FIXED_TO_INT:
+                    task.push(task.pop() >> 16)
+
+                // ── Integer comparison ───────────────────────────────────────
+                OP_CMP_EQ_INT:
+                    val b: i32 = task.pop()
+                    task.push_bool(task.pop() == b)
+                OP_CMP_NE_INT:
+                    val b: i32 = task.pop()
+                    task.push_bool(task.pop() != b)
+                OP_CMP_LT_INT:
+                    val b: i32 = task.pop()
+                    task.push_bool(task.pop() < b)
+                OP_CMP_LE_INT:
+                    val b: i32 = task.pop()
+                    task.push_bool(task.pop() <= b)
+                OP_CMP_GT_INT:
+                    val b: i32 = task.pop()
+                    task.push_bool(task.pop() > b)
+                OP_CMP_GE_INT:
+                    val b: i32 = task.pop()
+                    task.push_bool(task.pop() >= b)
+
+                // ── Fixed-point comparison ───────────────────────────────────
+                OP_CMP_EQ_FIXED:
+                    val b: i32 = task.pop()
+                    task.push_bool(task.pop() == b)
+                OP_CMP_NE_FIXED:
+                    val b: i32 = task.pop()
+                    task.push_bool(task.pop() != b)
+                OP_CMP_LT_FIXED:
+                    val b: i32 = task.pop()
+                    task.push_bool(task.pop() < b)
+                OP_CMP_LE_FIXED:
+                    val b: i32 = task.pop()
+                    task.push_bool(task.pop() <= b)
+                OP_CMP_GT_FIXED:
+                    val b: i32 = task.pop()
+                    task.push_bool(task.pop() > b)
+                OP_CMP_GE_FIXED:
+                    val b: i32 = task.pop()
+                    task.push_bool(task.pop() >= b)
+
+                // ── Control flow ─────────────────────────────────────────────
+                OP_JMP:
+                    pc = _read_u16(pc)
+                OP_JMP_IF_TRUE:
+                    val addr: i32 = _read_u16(pc)
+                    pc += 2
+                    if task.pop() != 0
+                        pc = addr
+                OP_JMP_IF_FALSE:
+                    val addr: i32 = _read_u16(pc)
+                    pc += 2
+                    if task.pop() == 0
+                        pc = addr
+                OP_CALL:
+                    val addr: i32 = _read_u16(pc)
+                    pc += 2
+                    task.frame = task.frame + 1
+                    if task.frame >= VM_MAX_FRAMES
+                        task.state = TaskState.FINISHED
+                    else
+                        val argc: i32 = task.pop()
+                        var j: i32 = 0
+                        while j < argc
+                            task.pop()
+                            j++
+                        task.push(pc)   // return address
+                        pc = addr
+                OP_RET:
+                    val retval:  i32 = task.pop()
+                    val retaddr: i32 = task.pop()
+                    task.frame = task.frame - 1
+                    pc = retaddr
+                    task.push(retval)
+
+                // ── System calls ─────────────────────────────────────────────
+                OP_SYSCALL:
+                    val sub: i32 = i32(_code[pc])
+                    pc++
+                    match sub
+                        SYSCALL_PRINT_INT:
+                            val value = task.pop()
+                            // TODO print
+                        SYSCALL_PRINT_FIXED:
+                            val value = task.pop()
+                            // TODO print
+                        SYSCALL_PRINT_STR:
+                            val addr = task.pop()
+                            // TODO print
+                        _:
+                            task.state = TaskState.FINISHED
+
+                // ── Events ───────────────────────────────────────────────────
+                OP_EVENT:
+                    val sub: i32 = i32(_code[pc])
+                    pc++
+                    match sub
+                        EVENT_CREATE_HANDLER:
+                            val ha: i32 = task.pop()   // addr  (top)
+                            val he: i32 = task.pop()   // event_id
+                            if _h_count < _max_handlers
+                                _handlers[_h_count].init(he, ha)
+                                _h_count++
+                        EVENT_EXIT_HANDLER:
+                            task.state = TaskState.FINISHED
+                        EVENT_HANDLER_SLEEP:
+                            task.sleep = task.pop()
+                            task.state = TaskState.SLEEPING
+                        EVENT_SEND:
+                            vm_send(task.pop())
+                        _:
+                            task.state = TaskState.FINISHED
+
+                // ── Unknown opcode ───────────────────────────────────────────
+                _:
+                    task.state = TaskState.FINISHED
+
+        task.pc = pc
+        return task.state == TaskState.FINISHED

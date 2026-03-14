@@ -1,0 +1,14 @@
+name: pico-panda
+version: 0.1.0
+
+src: src/
+out: out/
+
+targets:
+  test:
+    entry: main
+    platform: linux-x64
+    cc: gcc
+    cflags: [-g, -O0, -Wall]
+    flags: [DEBUG, HOSTED]
+    output: bin/vm_test
