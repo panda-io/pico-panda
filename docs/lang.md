@@ -39,7 +39,7 @@ No implicit conversions between types. Use explicit casts: `int(x)`, `fixed(x)`.
 
 ## Variables
 
-```
+```pico-panda
 var score: int = 0          // mutable
 val gravity: fixed = 9.8    // immutable binding — cannot be reassigned
 const MAX_HP: int = 100     // compile-time constant
@@ -47,7 +47,7 @@ const MAX_HP: int = 100     // compile-time constant
 
 Type inference with `:=`:
 
-```
+```pico-panda
 var x := 42         // inferred: int
 val g := 9.8        // inferred: fixed
 ```
@@ -64,7 +64,7 @@ See [References](#references).
 Declared with a compile-time size. Stored in the global segment.
 No runtime bounds checking.
 
-```
+```pico-panda
 var buf:  byte[256]     // 256 bytes
 var nums: int[64]       // 64 × 4 bytes
 var pts:  fixed[32]     // 32 × 4 bytes
@@ -73,7 +73,7 @@ var flags: bool[8]      // 8 × 4 bytes
 
 Element access:
 
-```
+```pico-panda
 buf[0] = 72
 val c: byte = buf[i]
 nums[i] = nums[i] + 1
@@ -86,7 +86,7 @@ single 32-bit integer. It occupies **one stack slot** and passes by value like a
 
 **Dword encoding:**
 
-```
+```pico-panda
  31          16 15           0
  ┌────────────┬──────────────┐
  │  len (u16) │  ptr  (u16)  │
@@ -99,20 +99,20 @@ variable is just an `int`.
 
 **Creating a slice:**
 
-```
+```pico-panda
 var buf: byte[256]
 val s: byte[] = {&buf, 64}      // ptr = address of buf, len = 64
 ```
 
 **`.len`** — extract the length (high 16 bits):
 
-```
+```pico-panda
 val n: int = s.len              // n = 64
 ```
 
 **Indexing** — extract ptr (low 16 bits), add element offset, load/store:
 
-```
+```pico-panda
 val c: byte  = s[i]             // byte[]:  ptr + i
 val x: int   = ns[i]            // int[]:   ptr + i*4
 val f: fixed = fs[i]            // fixed[]: ptr + i*4
@@ -126,7 +126,7 @@ the dword manually.
 
 Because a slice is just an `int`, it passes and returns by value with no overhead:
 
-```
+```pico-panda
 fun sum(data: int[], n: int) int
     var total: int = 0
     var i: int = 0
@@ -138,7 +138,7 @@ fun sum(data: int[], n: int) int
 
 Or use `.len` directly when the length is encoded in the slice:
 
-```
+```pico-panda
 fun sum(data: int[]) int
     var total: int = 0
     var i: int = 0
@@ -157,7 +157,7 @@ fun sum(data: int[]) int
 `data` declares a named flat record. Fields must be primitives, references (`&T`),
 or slices (`T[]`). No methods. No nested `data` inline.
 
-```
+```pico-panda
 data Vec2
     x: fixed
     y: fixed
@@ -173,7 +173,7 @@ data Sprite
 
 `data` variables are zero-initialized by default. Set fields explicitly:
 
-```
+```pico-panda
 var player: Sprite
 player.hp   = 100
 player.pos  = &player_pos
@@ -184,7 +184,7 @@ player.name = {&name_buf, 6}
 
 You cannot assign one `data` value to another:
 
-```
+```pico-panda
 var a: Sprite
 var b: Sprite
 b = a               // ERROR: cannot copy data
@@ -195,7 +195,7 @@ b.hp = a.hp         // OK — copy a single primitive field explicitly
 
 `data` types cannot be passed or returned by value. Always use a reference:
 
-```
+```pico-panda
 fun update(s: &Sprite)      // OK
 fun update(s: Sprite)       // ERROR: by-value not allowed
 
@@ -209,7 +209,7 @@ fun find(): Sprite          // ERROR: by-value not allowed
 
 References (`&T`) work the same as in Micro Panda.
 
-```
+```pico-panda
 var pos: Vec2
 val r: &Vec2 = &pos
 
@@ -227,7 +227,7 @@ Reference fields in `data` are not automatically initialized — assign them bef
 
 Standalone functions only. No methods on `data`.
 
-```
+```pico-panda
 fun move(s: &Sprite, dx: fixed, dy: fixed)
     s.pos.x = s.pos.x + dx
     s.pos.y = s.pos.y + dy
@@ -249,7 +249,7 @@ Recursion is **not allowed** — the VM has a fixed call-frame pool (8 frames).
 Signal handlers are top-level functions annotated with `@signal`.
 The compiler generates all handler registration — you write no entry point.
 
-```
+```pico-panda
 @signal(start)
 fun on_start()
     // runs once at startup
@@ -276,7 +276,7 @@ See `signal.md` for the full signal system.
 
 ## Control Flow
 
-```
+```pico-panda
 if x > 0
     do_something()
 
@@ -338,7 +338,7 @@ for i in range(0, 10)
 
 No implicit conversions. Use explicit cast syntax:
 
-```
+```pico-panda
 val f: fixed = fixed(score)     // int → fixed (shift left 16)
 val i: int   = int(gravity)     // fixed → int (shift right 16, truncates)
 val b: byte  = byte(flags)      // int → byte (low 8 bits)

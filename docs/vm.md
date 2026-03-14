@@ -37,7 +37,7 @@ Alignment rules:
 
 Example layout:
 
-```
+```micro-panda
 var score: int       → offset 0    (4 bytes)
 var gravity: fixed   → offset 4    (4 bytes)
 var alive: bool      → offset 8    (4 bytes)
@@ -52,7 +52,7 @@ The assembler emits a `global_size` value in the bytecode header; the VM allocat
 
 A slice (`T[]`) is a **packed 32-bit integer** — one stack slot, no hidden struct.
 
-```
+```plaintext
  31          16 15           0
  ┌────────────┬──────────────┐
  │  len (u16) │  ptr  (u16)  │
