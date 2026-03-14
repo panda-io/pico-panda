@@ -1,5 +1,0 @@
----
-triple:          'arm64-apple-darwin'
-binary-path:     '/Users/sang/Dev/panda-io/pico-panda/.micro-panda/test/vm_test'
-relocations:     []
-...

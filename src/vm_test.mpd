@@ -5,7 +5,7 @@ import vm::vm_load_sys
 import vm::vm_boot_sys
 import vm::vm_send
 import vm::vm_tick
-import vm::sys_vm
+import vm::vm
 
 // ── Bytecode builder helpers ──────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ fun test_push()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == 42)
+    assert(vm.output == 42)
 
 // ── Integer arithmetic ────────────────────────────────────────────────────────
 
@@ -67,7 +67,7 @@ fun test_add_int()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == 13)
+    assert(vm.output == 13)
 
 @test
 fun test_sub_int()
@@ -84,7 +84,7 @@ fun test_sub_int()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == 7)
+    assert(vm.output == 7)
 
 @test
 fun test_mul_int()
@@ -101,7 +101,7 @@ fun test_mul_int()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == 42)
+    assert(vm.output == 42)
 
 @test
 fun test_neg_int()
@@ -116,7 +116,7 @@ fun test_neg_int()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == -5)
+    assert(vm.output == -5)
 
 // ── Stack ops ─────────────────────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ fun test_dup()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == 14)
+    assert(vm.output == 14)
 
 @test
 fun test_swap()
@@ -152,7 +152,7 @@ fun test_swap()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == -7)
+    assert(vm.output == -7)
 
 // ── Bitwise ───────────────────────────────────────────────────────────────────
 
@@ -171,7 +171,7 @@ fun test_bitwise()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == 0x0F)
+    assert(vm.output == 0x0F)
 
 @test
 fun test_shift()
@@ -188,7 +188,7 @@ fun test_shift()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == 16)
+    assert(vm.output == 16)
 
 // ── Comparison + branch ───────────────────────────────────────────────────────
 
@@ -207,7 +207,7 @@ fun test_cmp_eq()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == 1)
+    assert(vm.output == 1)
 
 @test
 fun test_jmp_if_false()
@@ -241,7 +241,7 @@ fun test_jmp_if_false()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == 99)
+    assert(vm.output == 99)
 
 // ── CALL / RET ────────────────────────────────────────────────────────────────
 
@@ -271,7 +271,7 @@ fun test_call_ret()
     i = _wi32(code, i, 42)
     i = _wb(code, i, u8(0x64))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == 42)
+    assert(vm.output == 42)
 
 // ── Signal / event system ─────────────────────────────────────────────────────
 
@@ -311,7 +311,7 @@ fun test_signal_handler()
     vm_boot_sys()
     vm_send(EVENT_START)
     vm_tick()
-    assert(sys_vm.output == 77)
+    assert(vm.output == 77)
 
 // ── Fixed-point arithmetic ────────────────────────────────────────────────────
 
@@ -329,7 +329,7 @@ fun test_int_to_fixed()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == 196608)
+    assert(vm.output == 196608)
 
 @test
 fun test_fixed_to_int()
@@ -345,4 +345,4 @@ fun test_fixed_to_int()
     i = _wb(code, i, u8(0x71))
     i = _wb(code, i, u8(0x02))
     _boot({&raw[0], u32(i)})
-    assert(sys_vm.output == 3)
+    assert(vm.output == 3)
