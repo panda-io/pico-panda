@@ -75,6 +75,17 @@ class VM()
             if task.state == TaskState.FINISHED
                 task.active = false
 
+    // ── Event bus ─────────────────────────────────────────────────────────────
+
+    fun send_event(id: i32)
+        if _ev_size >= VM_MAX_EVENTS
+            return
+        _events[_ev_tail].id = id
+        for i: i32 in range(0, REGISTER_SIZE)
+            _events[_ev_tail].regs[i] = 0
+        _ev_tail = (_ev_tail + 1) % VM_MAX_EVENTS
+        _ev_size++
+
     // ── Tick ─────────────────────────────────────────────────────────────────
 
     fun tick()
@@ -97,14 +108,14 @@ class VM()
                 _run_execute(task, _sys_code, _sys_handlers)
                 if task.state == TaskState.FINISHED
                     task.active = false
-                    _update_handler(task, _sys_handlers)
+                    _release_handler(task, _sys_handlers)
 
         for task: &Task in _app_tasks
             if task.active && task.state == TaskState.RUNNING
                 _run_execute(task, _app_code, _app_handlers)
                 if task.state == TaskState.FINISHED
                     task.active = false
-                    _update_handler(task, _app_handlers)
+                    _release_handler(task, _app_handlers)
 
     // ── Private: task helpers ─────────────────────────────────────────────────
 
@@ -116,7 +127,7 @@ class VM()
                 task.state = TaskState.RUNNING
 
     @inline
-    fun _update_handler(task: &Task, handlers: Handler[])
+    fun _release_handler(task: &Task, handlers: Handler[])
         for handler: &Handler in handlers
             if handler.task == task
                 handler.task = null
@@ -168,16 +179,6 @@ class VM()
             return
         _events[_ev_tail].id = id
         _save_event_data(&_events[_ev_tail], task)
-        _ev_tail = (_ev_tail + 1) % VM_MAX_EVENTS
-        _ev_size++
-
-    @inline
-    fun send_event(id: i32)
-        if _ev_size >= VM_MAX_EVENTS
-            return
-        _events[_ev_tail].id = id
-        for i: i32 in range(0, REGISTER_SIZE)
-            _events[_ev_tail].regs[i] = 0
         _ev_tail = (_ev_tail + 1) % VM_MAX_EVENTS
         _ev_size++
 
