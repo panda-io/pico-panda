@@ -16,7 +16,11 @@ import string::*
 import console::*
 
 const MAX_BYTECODE: i32 = 65536
-const MAX_LINE:     i32 = 4096
+const MAX_LINE:     i32 = 1024
+
+enum AsmPass
+    SCAN
+    EMIT
 
 class Assembler()
     var _heap:     HeapAllocator
@@ -202,14 +206,90 @@ class Assembler()
             _errors++
             _emit_u16le(0)
 
-    // ── Pass 1: scan file and record label addresses ───────────────────────────
+    // ── Pass 1 / Pass 2 per-line processing ──────────────────────────────────
 
-    fun pass1(path: u8[]) bool
+    fun _pass1_line(line: u8[])
+        if line.size() == u32(0)
+            return
+        if line[0] == u8(46) || line[0] == u8(64)      // '.' or '@'
+            return
+        if _is_label(line)
+            val name: u8[] = _label_name(line)
+            if name.size() > u32(0)
+                if _labels.contains(name)
+                    print_str("error: duplicate label '")
+                    print_str(name)
+                    println()
+                    _errors++
+                else
+                    _labels.set(name, _pc)
+        else
+            val m: u8[] = token(line, u32(0), u8(32))
+            _pc = _pc + _inst_size(m)
+
+    fun _pass2_line(line: u8[])
+        if line.size() == u32(0)
+            return
+        if line[0] == u8(46) || line[0] == u8(64)      // '.' or '@'
+            return
+        if _is_label(line)
+            return
+        val m: u8[] = token(line, u32(0), u8(32))
+        val op_pos: u32 = skip(line, m.size(), u8(32))
+        val operand: u8[] = sub(line, op_pos, line.size() - op_pos)
+        if equals(m, "PUSH")
+            _emit_u8(0x01)
+            _emit_i32le(_parse_int(operand))
+        else if equals(m, "PUSH_FLOAT")
+            _emit_u8(0x01)
+            _emit_i32le(_parse_fixed(operand))
+        else if equals(m, "JMP")
+            _emit_u8(0x60)
+            _emit_label(operand)
+        else if equals(m, "JMP_IF_TRUE")
+            _emit_u8(0x61)
+            _emit_label(operand)
+        else if equals(m, "JMP_IF_FALSE")
+            _emit_u8(0x62)
+            _emit_label(operand)
+        else if equals(m, "CALL")
+            _emit_u8(0x63)
+            _emit_label(operand)
+        else
+            val op: i32 = _opcode(m)
+            if op < 0
+                print_str("error: unknown mnemonic '")
+                print_str(m)
+                println()
+                _errors++
+            else
+                _emit_u8(op)
+
+    // ── String line iterator ──────────────────────────────────────────────────
+
+    fun _iter_str(src: u8[], pass: AsmPass) bool
+        var rest: u8[] = src
+        while rest.size() > u32(0)
+            val nl: i32 = index_of(rest, u8(10))        // '\n'
+            var raw: u8[]
+            if nl < 0
+                raw  = rest
+                rest = {null, 0}
+            else
+                raw  = sub(rest, u32(0), u32(nl))
+                rest = sub(rest, u32(nl) + u32(1), rest.size() - u32(nl) - u32(1))
+            val line: u8[] = _strip_comment(raw)
+            if pass == AsmPass.SCAN
+                _pass1_line(line)
+            else
+                _pass2_line(line)
+        return _errors == 0
+
+    fun _iter_file(path: u8[], pass: AsmPass) bool
         var f: File
         if !f.open(path, READ)
             print_str("error: cannot open '")
             print_str(path)
-            print_str("'")
             println()
             _errors++
             return false
@@ -218,29 +298,21 @@ class Assembler()
             val n: u32 = f.read_line(line_buf)
             if n == u32(0)
                 break
-            val raw: u8[] = {&_line[0], n}
-            val line: u8[] = _strip_comment(raw)
-            if line.size() == u32(0)
-                continue
-            // skip directives and annotations (deferred)
-            if line[0] == u8(46) || line[0] == u8(64)      // '.' or '@'
-                continue
-            if _is_label(line)
-                val name: u8[] = _label_name(line)
-                if name.size() > u32(0)
-                    if _labels.contains(name)
-                        print_str("error: duplicate label '")
-                        print_str(name)
-                        print_str("'")
-                        println()
-                        _errors++
-                    else
-                        _labels.set(name, _pc)
+            val line: u8[] = _strip_comment({&_line[0], n})
+            if pass == AsmPass.SCAN
+                _pass1_line(line)
             else
-                val m: u8[] = token(line, u32(0), u8(32))
-                _pc = _pc + _inst_size(m)
+                _pass2_line(line)
         f.close()
         return _errors == 0
+
+    // ── Pass 1: scan and record label addresses ───────────────────────────────
+
+    fun pass1(path: u8[]) bool
+        return _iter_file(path, AsmPass.SCAN)
+
+    fun pass1_str(src: u8[]) bool
+        return _iter_str(src, AsmPass.SCAN)
 
     // ── Reset PC for pass 2 ───────────────────────────────────────────────────
 
@@ -250,63 +322,10 @@ class Assembler()
     // ── Pass 2: emit bytecode ─────────────────────────────────────────────────
 
     fun pass2(path: u8[]) bool
-        var f: File
-        if !f.open(path, READ)
-            print_str("error: cannot open '")
-            print_str(path)
-            print_str("'")
-            println()
-            _errors++
-            return false
-        var line_buf: u8[] = {&_line[0], u32(MAX_LINE)}
-        while true
-            val n: u32 = f.read_line(line_buf)
-            if n == u32(0)
-                break
-            val raw: u8[] = {&_line[0], n}
-            val line: u8[] = _strip_comment(raw)
-            if line.size() == u32(0)
-                continue
-            // skip directives and annotations (deferred)
-            if line[0] == u8(46) || line[0] == u8(64)      // '.' or '@'
-                continue
-            if _is_label(line)
-                continue
-            // split mnemonic and operand
-            val m: u8[] = token(line, u32(0), u8(32))
-            val op_pos: u32 = skip(line, m.size(), u8(32))
-            val operand: u8[] = sub(line, op_pos, line.size() - op_pos)
-            // dispatch
-            if equals(m, "PUSH")
-                _emit_u8(0x01)
-                _emit_i32le(_parse_int(operand))
-            else if equals(m, "PUSH_FLOAT")
-                _emit_u8(0x01)
-                _emit_i32le(_parse_fixed(operand))
-            else if equals(m, "JMP")
-                _emit_u8(0x60)
-                _emit_label(operand)
-            else if equals(m, "JMP_IF_TRUE")
-                _emit_u8(0x61)
-                _emit_label(operand)
-            else if equals(m, "JMP_IF_FALSE")
-                _emit_u8(0x62)
-                _emit_label(operand)
-            else if equals(m, "CALL")
-                _emit_u8(0x63)
-                _emit_label(operand)
-            else
-                val op: i32 = _opcode(m)
-                if op < 0
-                    print_str("error: unknown mnemonic '")
-                    print_str(m)
-                    print_str("'")
-                    println()
-                    _errors++
-                else
-                    _emit_u8(op)
-        f.close()
-        return _errors == 0
+        return _iter_file(path, AsmPass.EMIT)
+
+    fun pass2_str(src: u8[]) bool
+        return _iter_str(src, AsmPass.EMIT)
 
     // ── Output ────────────────────────────────────────────────────────────────
 
