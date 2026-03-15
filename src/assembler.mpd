@@ -1,0 +1,317 @@
+// ── assembler.mpd ─────────────────────────────────────────────────────────────
+// Two-pass PPasm assembler for pico-panda bytecode.
+//
+// Supported in v1:
+//   PUSH, PUSH_FLOAT, DUP, SWAP, DROP
+//   Integer/fixed arithmetic and comparison
+//   JMP, JMP_IF_TRUE, JMP_IF_FALSE, CALL, RET
+//
+// Deferred: SYSCALL, EVENT, @signal, .global, .local, PUSH_STR
+// Multi-file: call pass1() for each file, reset_pc(), call pass2() for each file.
+
+import memory::HeapAllocator
+import collection::HeapMap
+import file::*
+import string::*
+import console::*
+
+const MAX_BYTECODE: i32 = 65536
+const MAX_LINE:     i32 = 4096
+
+class Assembler()
+    var _heap:     HeapAllocator
+    var _labels:   HeapMap<i32>
+    var _opcodes:  HeapMap<i32>
+    var _bytecode: u8[MAX_BYTECODE]
+    var _line:     u8[MAX_LINE]
+    var _pc:       i32 = 0
+    var _errors:   i32 = 0
+
+    fun init()
+        _pc     = 0
+        _errors = 0
+        _labels.init(&_heap)
+        _opcodes.init(&_heap)
+        _opcodes.set("DUP",          0x18)
+        _opcodes.set("SWAP",         0x19)
+        _opcodes.set("DROP",         0x1A)
+        _opcodes.set("ADD_INT",      0x20)
+        _opcodes.set("SUB_INT",      0x21)
+        _opcodes.set("MUL_INT",      0x22)
+        _opcodes.set("DIV_INT",      0x23)
+        _opcodes.set("MOD_INT",      0x24)
+        _opcodes.set("NEG_INT",      0x25)
+        _opcodes.set("SHL_INT",      0x26)
+        _opcodes.set("SHR_INT",      0x27)
+        _opcodes.set("SAR_INT",      0x28)
+        _opcodes.set("AND",          0x29)
+        _opcodes.set("OR",           0x2A)
+        _opcodes.set("XOR",          0x2B)
+        _opcodes.set("NOT",          0x2C)
+        _opcodes.set("ADD_FIXED",    0x40)
+        _opcodes.set("SUB_FIXED",    0x41)
+        _opcodes.set("MUL_FIXED",    0x42)
+        _opcodes.set("DIV_FIXED",    0x43)
+        _opcodes.set("NEG_FIXED",    0x44)
+        _opcodes.set("INT_TO_FIXED", 0x45)
+        _opcodes.set("FIXED_TO_INT", 0x46)
+        _opcodes.set("CMP_EQ_INT",   0x50)
+        _opcodes.set("CMP_NE_INT",   0x51)
+        _opcodes.set("CMP_LT_INT",   0x52)
+        _opcodes.set("CMP_LE_INT",   0x53)
+        _opcodes.set("CMP_GT_INT",   0x54)
+        _opcodes.set("CMP_GE_INT",   0x55)
+        _opcodes.set("CMP_EQ_FIXED", 0x56)
+        _opcodes.set("CMP_NE_FIXED", 0x57)
+        _opcodes.set("CMP_LT_FIXED", 0x58)
+        _opcodes.set("CMP_LE_FIXED", 0x59)
+        _opcodes.set("CMP_GT_FIXED", 0x5A)
+        _opcodes.set("CMP_GE_FIXED", 0x5B)
+        _opcodes.set("RET",          0x64)
+
+    // ── Byte emit helpers ─────────────────────────────────────────────────────
+
+    @inline
+    fun _emit_u8(b: i32)
+        if _pc < MAX_BYTECODE
+            _bytecode[_pc] = u8(b)
+            _pc++
+
+    @inline
+    fun _emit_i32le(v: i32)
+        _emit_u8(v & 0xFF)
+        _emit_u8((v >> 8)  & 0xFF)
+        _emit_u8((v >> 16) & 0xFF)
+        _emit_u8((v >> 24) & 0xFF)
+
+    @inline
+    fun _emit_u16le(v: i32)
+        _emit_u8(v & 0xFF)
+        _emit_u8((v >> 8) & 0xFF)
+
+    // ── Line helpers ──────────────────────────────────────────────────────────
+
+    // Strip ; comment and trim whitespace.
+    fun _strip_comment(s: u8[]) u8[]
+        val idx: i32 = index_of(s, u8(59))      // ';'
+        if idx < 0
+            return trim(s)
+        return trim(sub(s, u32(0), u32(idx)))
+
+    // True if line ends with ':' (label definition).
+    fun _is_label(line: u8[]) bool
+        if line.size() == u32(0)
+            return false
+        return line[line.size() - u32(1)] == u8(58)     // ':'
+
+    // Extract label name: strip optional "fun " prefix and trailing ':'.
+    fun _label_name(line: u8[]) u8[]
+        var s: u8[] = line
+        if starts_with(s, "fun ")
+            s = trim_start(sub(s, u32(4), s.size() - u32(4)))
+        if s.size() > u32(0)
+            s = sub(s, u32(0), s.size() - u32(1))      // drop trailing ':'
+        return trim(s)
+
+    // ── Instruction size (pass 1 PC tracking) ─────────────────────────────────
+
+    fun _inst_size(m: u8[]) i32
+        if equals(m, "PUSH")
+            return 5
+        if equals(m, "PUSH_FLOAT")
+            return 5
+        if equals(m, "JMP")
+            return 3
+        if equals(m, "JMP_IF_TRUE")
+            return 3
+        if equals(m, "JMP_IF_FALSE")
+            return 3
+        if equals(m, "CALL")
+            return 3
+        return 1
+
+    // ── Hex / integer / fixed-point parsing ───────────────────────────────────
+
+    fun _parse_hex(s: u8[]) i32
+        var result: i32 = 0
+        var i: u32 = 0
+        while i < s.size()
+            val c: u8 = s[i]
+            var digit: i32 = 0
+            if c >= u8(48) && c <= u8(57)            // '0'-'9'
+                digit = i32(c) - 48
+            else if c >= u8(65) && c <= u8(70)       // 'A'-'F'
+                digit = i32(c) - 55
+            else if c >= u8(97) && c <= u8(102)      // 'a'-'f'
+                digit = i32(c) - 87
+            result = (result << 4) | digit
+            i++
+        return result
+
+    fun _parse_int(s: u8[]) i32
+        if starts_with(s, "0x") || starts_with(s, "0X")
+            return _parse_hex(sub(s, u32(2), s.size() - u32(2)))
+        if starts_with(s, "-0x") || starts_with(s, "-0X")
+            return -_parse_hex(sub(s, u32(3), s.size() - u32(3)))
+        return parse_i32(s)
+
+    // Parse float literal as 16.16 fixed-point.  e.g. "1.5" -> 98304
+    fun _parse_fixed(s: u8[]) i32
+        var neg: bool = false
+        var src: u8[] = s
+        if src.size() > u32(0) && src[0] == u8(45)         // '-'
+            neg = true
+            src = sub(src, u32(1), src.size() - u32(1))
+        val dot: i32 = index_of(src, u8(46))                // '.'
+        if dot < 0
+            val r: i32 = parse_i32(src) << 16
+            if neg
+                return -r
+            return r
+        val int_part: i32 = parse_i32(sub(src, u32(0), u32(dot)))
+        val frac_str: u8[] = sub(src, u32(dot) + u32(1), src.size() - u32(dot) - u32(1))
+        var denom: i32 = 1
+        var j: u32 = 0
+        while j < frac_str.size()
+            denom = denom * 10
+            j++
+        val num: i32 = parse_i32(frac_str)
+        val frac_val: i32 = (num * 65536) / denom
+        val result: i32 = (int_part << 16) + frac_val
+        if neg
+            return -result
+        return result
+
+    // ── Opcode lookup ─────────────────────────────────────────────────────────
+
+    fun _opcode(m: u8[]) i32
+        if _opcodes.contains(m)
+            return _opcodes.get(m)
+        return -1
+
+    // ── Emit label address helper (pass 2) ────────────────────────────────────
+
+    fun _emit_label(name: u8[])
+        if _labels.contains(name)
+            _emit_u16le(_labels.get(name))
+        else
+            print_str("error: undefined label '")
+            print_str(name)
+            print_str("'")
+            println()
+            _errors++
+            _emit_u16le(0)
+
+    // ── Pass 1: scan file and record label addresses ───────────────────────────
+
+    fun pass1(path: u8[]) bool
+        var f: File
+        if !f.open(path, READ)
+            print_str("error: cannot open '")
+            print_str(path)
+            print_str("'")
+            println()
+            _errors++
+            return false
+        var line_buf: u8[] = {&_line[0], u32(MAX_LINE)}
+        while true
+            val n: u32 = f.read_line(line_buf)
+            if n == u32(0)
+                break
+            val raw: u8[] = {&_line[0], n}
+            val line: u8[] = _strip_comment(raw)
+            if line.size() == u32(0)
+                continue
+            // skip directives and annotations (deferred)
+            if line[0] == u8(46) || line[0] == u8(64)      // '.' or '@'
+                continue
+            if _is_label(line)
+                val name: u8[] = _label_name(line)
+                if name.size() > u32(0)
+                    if _labels.contains(name)
+                        print_str("error: duplicate label '")
+                        print_str(name)
+                        print_str("'")
+                        println()
+                        _errors++
+                    else
+                        _labels.set(name, _pc)
+            else
+                val m: u8[] = token(line, u32(0), u8(32))
+                _pc = _pc + _inst_size(m)
+        f.close()
+        return _errors == 0
+
+    // ── Reset PC for pass 2 ───────────────────────────────────────────────────
+
+    fun reset_pc()
+        _pc = 0
+
+    // ── Pass 2: emit bytecode ─────────────────────────────────────────────────
+
+    fun pass2(path: u8[]) bool
+        var f: File
+        if !f.open(path, READ)
+            print_str("error: cannot open '")
+            print_str(path)
+            print_str("'")
+            println()
+            _errors++
+            return false
+        var line_buf: u8[] = {&_line[0], u32(MAX_LINE)}
+        while true
+            val n: u32 = f.read_line(line_buf)
+            if n == u32(0)
+                break
+            val raw: u8[] = {&_line[0], n}
+            val line: u8[] = _strip_comment(raw)
+            if line.size() == u32(0)
+                continue
+            // skip directives and annotations (deferred)
+            if line[0] == u8(46) || line[0] == u8(64)      // '.' or '@'
+                continue
+            if _is_label(line)
+                continue
+            // split mnemonic and operand
+            val m: u8[] = token(line, u32(0), u8(32))
+            val op_pos: u32 = skip(line, m.size(), u8(32))
+            val operand: u8[] = sub(line, op_pos, line.size() - op_pos)
+            // dispatch
+            if equals(m, "PUSH")
+                _emit_u8(0x01)
+                _emit_i32le(_parse_int(operand))
+            else if equals(m, "PUSH_FLOAT")
+                _emit_u8(0x01)
+                _emit_i32le(_parse_fixed(operand))
+            else if equals(m, "JMP")
+                _emit_u8(0x60)
+                _emit_label(operand)
+            else if equals(m, "JMP_IF_TRUE")
+                _emit_u8(0x61)
+                _emit_label(operand)
+            else if equals(m, "JMP_IF_FALSE")
+                _emit_u8(0x62)
+                _emit_label(operand)
+            else if equals(m, "CALL")
+                _emit_u8(0x63)
+                _emit_label(operand)
+            else
+                val op: i32 = _opcode(m)
+                if op < 0
+                    print_str("error: unknown mnemonic '")
+                    print_str(m)
+                    print_str("'")
+                    println()
+                    _errors++
+                else
+                    _emit_u8(op)
+        f.close()
+        return _errors == 0
+
+    // ── Output ────────────────────────────────────────────────────────────────
+
+    fun get_bytecode() u8[]
+        return {&_bytecode[0], u32(_pc)}
+
+    fun error_count() i32
+        return _errors

@@ -12,3 +12,10 @@ targets:
     cflags: [-g, -O0, -Wall]
     flags: [DEBUG, HOSTED]
     output: bin/vm_test
+  ppd:
+    entry: ppd
+    platform: linux-x64
+    cc: gcc
+    cflags: [-O2, -Wall]
+    flags: [HOSTED]
+    output: bin/ppd

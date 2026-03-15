@@ -1,0 +1,141 @@
+// ── ppd.mpd ───────────────────────────────────────────────────────────────────
+// Pico-panda unified CLI entry point.
+//
+// Usage:
+//   ppd build         compile project from ppd.cfg
+//   ppd run [file]    run bytecode (default: output path from ppd.cfg)
+//
+// HOSTED only.
+
+import assembler::*
+import project::*
+import vm::*
+import config::MAX_CODE
+import console::*
+import file::*
+import string::*
+
+@include("string.h")
+
+// Access C main() argc/argv via the statics emitted by the compiler.
+@extern("__mp_argc")
+fun _argc(): i32
+
+@extern("(uint32_t)strlen(__mp_argv[{i}])")
+fun _argv_len(i: i32): u32
+
+@extern("((uint8_t*)__mp_argv[{i}])")
+fun _argv_ptr(i: i32): &u8
+
+fun _argv(i: i32): u8[]
+    val len: u32 = _argv_len(i)
+    val ptr: &u8 = _argv_ptr(i)
+    return {ptr, len}
+
+// Module-level to keep large buffers off the stack.
+var _asm:     Assembler
+var _cfg:     PpdConfig
+var _run_buf: u8[MAX_CODE]
+
+fun _write_output(out_path: u8[])
+    if _asm.error_count() > 0
+        print_str("assembly failed: ")
+        print_i32(_asm.error_count())
+        print_str(" error(s)")
+        println()
+        return
+    var f: File
+    if !f.open(out_path, WRITE)
+        print_str("error: cannot write '")
+        print_str(out_path)
+        print_str("'")
+        println()
+        return
+    val bc: u8[] = _asm.get_bytecode()
+    f.write_bytes(bc)
+    f.close()
+    print_str("wrote ")
+    print_i32(i32(bc.size()))
+    print_str(" bytes to '")
+    print_str(out_path)
+    print_str("'")
+    println()
+
+fun _cmd_build()
+    if !_cfg.load("ppd.cfg")
+        print_str("error: cannot open 'ppd.cfg'")
+        println()
+        return
+    if !_cfg.valid()
+        print_str("error: 'ppd.cfg' must define 'src' and 'output'")
+        println()
+        return
+    var i: i32 = 0
+    while i < _cfg.src_count()
+        if !ends_with(_cfg.src(i), ".ppasm")
+            print_str("error: only *.ppasm supported: ")
+            print_str(_cfg.src(i))
+            println()
+            return
+        i++
+    _asm.init()
+    i = 0
+    while i < _cfg.src_count()
+        _asm.pass1(_cfg.src(i))
+        i++
+    _asm.reset_pc()
+    i = 0
+    while i < _cfg.src_count()
+        _asm.pass2(_cfg.src(i))
+        i++
+    _write_output(_cfg.output())
+
+fun _cmd_run(path: u8[])
+    var run_path: u8[] = path
+    if path.size() == u32(0)
+        if !_cfg.load("ppd.cfg")
+            print_str("error: cannot open 'ppd.cfg'")
+            println()
+            return
+        if !_cfg.valid()
+            print_str("error: 'ppd.cfg' must define 'output'")
+            println()
+            return
+        run_path = _cfg.output()
+    var f: File
+    if !f.open(run_path, READ)
+        print_str("error: cannot open '")
+        print_str(run_path)
+        print_str("'")
+        println()
+        return
+    val n: u32 = f.read_bytes({&_run_buf[0], u32(MAX_CODE)})
+    f.close()
+    vm_reset()
+    vm_load_app({&_run_buf[0], n})
+    vm_boot_app()
+
+fun _usage()
+    print_str("usage: ppd <command>")
+    println()
+    print_str("  build         compile project from ppd.cfg")
+    println()
+    print_str("  run [file]    run bytecode (default: ppd.cfg output)")
+    println()
+
+fun main()
+    val argc: i32 = _argc()
+    if argc < 2
+        _usage()
+        return
+    val cmd: u8[] = _argv(1)
+    if equals(cmd, "build")
+        _cmd_build()
+        return
+    if equals(cmd, "run")
+        var run_arg: u8[] = ""
+        if argc >= 3
+            run_arg = _argv(2)
+        _cmd_run(run_arg)
+        return
+    _usage()
