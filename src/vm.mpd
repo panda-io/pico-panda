@@ -2,9 +2,23 @@ import task::Task
 import task::TaskState
 import task::REGISTER_SIZE
 import handler::Handler
-import event::Event
+import event::*
 import config::*
 import opcode::*
+import console::*
+
+// ── VM error codes ────────────────────────────────────────────────────────────
+
+enum VmError
+    NONE
+    STACK_OVERFLOW
+    STACK_UNDERFLOW
+    FRAME_EXCEEDED
+    BAD_OPCODE
+    BAD_SYSCALL
+    BAD_EVENT_CODE
+    SPAWN_FAILED
+    EVENT_FULL
 
 // ── VM ────────────────────────────────────────────────────────────────────────
 // Single instance holds both system and app contexts plus the shared event bus.
@@ -32,6 +46,9 @@ class VM()
     // ── Output (readable from tests / host) ──────────────────────────────────
     var output:                i32
 
+    // ── Error tracking ────────────────────────────────────────────────────────
+    var _last_error:           VmError
+
     // ── Init / reset ─────────────────────────────────────────────────────────
 
     fun reset()
@@ -44,7 +61,8 @@ class VM()
         _ev_head = 0
         _ev_tail = 0
         _ev_size = 0
-        output   = 0
+        output      = 0
+        _last_error = VmError.NONE
         for handler: &Handler in _handlers
             handler.active = false
             handler.task = null
@@ -63,32 +81,48 @@ class VM()
 
     fun boot_sys()
         val task: &Task = _spawn_task(0, _sys_tasks)
-        if task != null
-            _run_execute(task, _sys_code, _sys_handlers)
-            if task.state == TaskState.FINISHED
-                task.active = false
+        if task == null
+            _on_error(VmError.SPAWN_FAILED)
+            return
+        send_event(EVENT_SYS_START, 0, 0, 0, 0)
+        _run_execute(task, _sys_code, _sys_handlers)
+        if task.state == TaskState.FINISHED
+            task.active = false
+        if _last_error != VmError.NONE
+            _on_error(_last_error)
 
     fun boot_app()
         val task: &Task = _spawn_task(0, _app_tasks)
-        if task != null
-            _run_execute(task, _app_code, _app_handlers)
-            if task.state == TaskState.FINISHED
-                task.active = false
+        if task == null
+            _on_error(VmError.SPAWN_FAILED)
+            return
+        send_event(EVENT_APP_START, 0, 0, 0, 0)
+        _run_execute(task, _app_code, _app_handlers)
+        if task.state == TaskState.FINISHED
+            task.active = false
+        if _last_error != VmError.NONE
+            _on_error(_last_error)
 
     // ── Event bus ─────────────────────────────────────────────────────────────
 
-    fun send_event(id: i32)
+    fun send_event(id: i32, param0: i32, param1: i32, param2: i32, param3: i32)
         if _ev_size >= VM_MAX_EVENTS
+            _on_error(VmError.EVENT_FULL)
             return
         _events[_ev_tail].id = id
-        for i: i32 in range(0, REGISTER_SIZE)
-            _events[_ev_tail].regs[i] = 0
+        _events[_ev_tail].regs[0] = param0
+        _events[_ev_tail].regs[1] = param1
+        _events[_ev_tail].regs[2] = param2
+        _events[_ev_tail].regs[3] = param3
         _ev_tail = (_ev_tail + 1) % VM_MAX_EVENTS
         _ev_size++
 
     // ── Tick ─────────────────────────────────────────────────────────────────
 
-    fun tick()
+    fun tick(delta: fixed)
+        // 0. Sent tick event
+        send_event(EVENT_TICK, i32(delta), 0, 0, 0)
+
         // 1. Wake sleeping tasks
         for task: &Task in _sys_tasks
             _task_wake(task)
@@ -109,6 +143,9 @@ class VM()
                 if task.state == TaskState.FINISHED
                     task.active = false
                     _release_handler(task, _sys_handlers)
+                if _last_error != VmError.NONE
+                    _on_error(_last_error)
+                    return
 
         for task: &Task in _app_tasks
             if task.active && task.state == TaskState.RUNNING
@@ -116,6 +153,9 @@ class VM()
                 if task.state == TaskState.FINISHED
                     task.active = false
                     _release_handler(task, _app_handlers)
+                if _last_error != VmError.NONE
+                    _on_error(_last_error)
+                    return
 
     // ── Private: task helpers ─────────────────────────────────────────────────
 
@@ -167,6 +207,9 @@ class VM()
             if task != null
                 _load_event_data(event, task)
                 _run_execute(task, code, handlers)
+                if _last_error != VmError.NONE
+                    _on_error(_last_error)
+                    return
                 if task.state == TaskState.FINISHED
                     task.active = false
                 else
@@ -176,6 +219,8 @@ class VM()
     @inline
     fun _send(id: i32, task: &Task)
         if _ev_size >= VM_MAX_EVENTS
+            _last_error = VmError.EVENT_FULL
+            task.state = TaskState.FINISHED
             return
         _events[_ev_tail].id = id
         _save_event_data(&_events[_ev_tail], task)
@@ -192,6 +237,48 @@ class VM()
     fun _read_u16(code: u8[], pc: i32) i32
         return i32(code[pc]) | (i32(code[pc + 1]) << 8)
 
+    // ── Error handling ────────────────────────────────────────────────────────
+
+    fun _print_error_msg(code: VmError)
+        print_str("[vm] error: ")
+        match code
+            VmError.STACK_OVERFLOW:
+                print_str("stack overflow")
+            VmError.STACK_UNDERFLOW:
+                print_str("stack underflow")
+            VmError.FRAME_EXCEEDED:
+                print_str("frame exceeded")
+            VmError.BAD_OPCODE:
+                print_str("bad opcode")
+            VmError.BAD_SYSCALL:
+                print_str("bad syscall")
+            VmError.BAD_EVENT_CODE:
+                print_str("bad event code")
+            VmError.SPAWN_FAILED:
+                print_str("spawn failed")
+            VmError.EVENT_FULL:
+                print_str("event queue full")
+            _:
+                print_str("unknown")
+        println()
+
+    fun _boot_sys_no_err()
+        val task: &Task = _spawn_task(0, _sys_tasks)
+        if task != null
+            _run_execute(task, _sys_code, _sys_handlers)
+            if task.state == TaskState.FINISHED
+                task.active = false
+        _last_error = VmError.NONE
+
+    fun _on_error(code: VmError)
+        _last_error = VmError.NONE
+        _print_error_msg(code)
+        val saved: u8[] = _sys_code
+        reset()
+        if saved.size() > u32(0)
+            _sys_code = saved
+            _boot_sys_no_err()
+
     // ── Execute loops ─────────────────────────────────────────────────────────
 
     fun _run_execute(task: &Task, code: u8[], handlers: Handler[])
@@ -199,6 +286,10 @@ class VM()
         task.state = TaskState.RUNNING
 
         while task.state == TaskState.RUNNING
+            if task.error != VmError.NONE
+                _last_error = task.error
+                task.state = TaskState.FINISHED
+                continue
             if pc >= i32(code.size)
                 task.state = TaskState.FINISHED
                 continue
@@ -339,6 +430,7 @@ class VM()
                     pc += 2
                     task.frame = task.frame + 1
                     if task.frame >= VM_MAX_FRAMES
+                        _last_error = VmError.FRAME_EXCEEDED
                         task.state = TaskState.FINISHED
                     else
                         val argc: i32 = task.pop()
@@ -363,6 +455,7 @@ class VM()
                         SysCall.PrintFixed:
                             output = task.pop()
                         _:
+                            _last_error = VmError.BAD_SYSCALL
                             task.state = TaskState.FINISHED
                 OpCode.Event:
                     val sub: i32 = i32(code[pc])
@@ -383,8 +476,10 @@ class VM()
                         EventCode.Send:
                             _send(task.pop(), task)
                         _:
+                            _last_error = VmError.BAD_EVENT_CODE
                             task.state = TaskState.FINISHED
                 _:
+                    _last_error = VmError.BAD_OPCODE
                     task.state = TaskState.FINISHED
 
         task.pc = pc
@@ -410,8 +505,8 @@ fun vm_boot_sys()
 fun vm_boot_app()
     vm.boot_app()
 
-fun vm_send(id: i32)
-    vm.send_event(id)
+fun vm_send(id: i32, param0: i32, param1: i32, param2: i32, param3: i32)
+    vm.send_event(id, param0, param1, param2, param3)
 
-fun vm_tick()
-    vm.tick()
+fun vm_tick(delta: fixed)
+    vm.tick(delta)

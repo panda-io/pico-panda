@@ -1,8 +1,9 @@
 import task::REGISTER_SIZE
 
 // ── System signal IDs (shared between assembler and host) ─────────────────────
-const EVENT_START: i32 = 1
-const EVENT_TICK:  i32 = 2
+const EVENT_SYS_START: i32 = 1
+const EVENT_APP_START: i32 = 2
+const EVENT_TICK:      i32 = 3
 
 class Event()
     var id:   i32

@@ -1,5 +1,5 @@
 import test::assert
-import event::EVENT_START
+import event::EVENT_SYS_START
 import vm::vm_reset
 import vm::vm_load_sys
 import vm::vm_boot_sys
@@ -290,7 +290,7 @@ fun test_signal_handler()
     val code: u8[] = {&raw[0], u32(64)}
     var i: i32 = 0
     i = _wb(code, i, u8(0x01))
-    i = _wi32(code, i, EVENT_START)
+    i = _wi32(code, i, EVENT_SYS_START)
     i = _wb(code, i, u8(0x01))
     i = _wi32(code, i, 17)
     i = _wb(code, i, u8(0x71))
@@ -309,8 +309,7 @@ fun test_signal_handler()
     vm_reset()
     vm_load_sys({&raw[0], u32(i)})
     vm_boot_sys()
-    vm_send(EVENT_START)
-    vm_tick()
+    vm_tick(1.0)
     assert(vm.output == 77)
 
 // ── Fixed-point arithmetic ────────────────────────────────────────────────────
