@@ -1,0 +1,11 @@
+// ── VM error codes ────────────────────────────────────────────────────────────
+
+enum VmError
+    NONE
+    STACK_OVERFLOW
+    STACK_UNDERFLOW
+    FRAME_EXCEEDED
+    BAD_OPCODE
+    BAD_MODULE
+    SPAWN_FAILED
+    EVENT_FULL

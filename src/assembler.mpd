@@ -5,8 +5,9 @@
 //   PUSH, PUSH_FLOAT, DUP, SWAP, DROP
 //   Integer/fixed arithmetic and comparison
 //   JMP, JMP_IF_TRUE, JMP_IF_FALSE, CALL, RET
+//   CALL_MODULE module_id(u8) sub(u8)
 //
-// Deferred: SYSCALL, EVENT, @signal, .global, .local, PUSH_STR
+// Deferred: @signal, .global, .local, PUSH_STR
 // Multi-file: call pass1() for each file, reset_pc(), call pass2() for each file.
 
 import memory::HeapAllocator
@@ -36,6 +37,8 @@ class Assembler()
         _errors = 0
         _labels.init(&_heap)
         _opcodes.init(&_heap)
+        _opcodes.set("PUSH",         0x01)
+        _opcodes.set("PUSH_FLOAT",   0x01)
         _opcodes.set("DUP",          0x18)
         _opcodes.set("SWAP",         0x19)
         _opcodes.set("DROP",         0x1A)
@@ -71,7 +74,12 @@ class Assembler()
         _opcodes.set("CMP_LE_FIXED", 0x59)
         _opcodes.set("CMP_GT_FIXED", 0x5A)
         _opcodes.set("CMP_GE_FIXED", 0x5B)
+        _opcodes.set("JMP",          0x60)
+        _opcodes.set("JMP_IF_TRUE",  0x61)
+        _opcodes.set("JMP_IF_FALSE", 0x62)
+        _opcodes.set("CALL",         0x63)
         _opcodes.set("RET",          0x64)
+        _opcodes.set("CALL_MODULE",  0x70)
 
     // ── Byte emit helpers ─────────────────────────────────────────────────────
 
@@ -120,17 +128,11 @@ class Assembler()
     // ── Instruction size (pass 1 PC tracking) ─────────────────────────────────
 
     fun _inst_size(m: u8[]) i32
-        if equals(m, "PUSH")
+        if equals(m, "PUSH") || equals(m, "PUSH_FLOAT")
             return 5
-        if equals(m, "PUSH_FLOAT")
-            return 5
-        if equals(m, "JMP")
+        if equals(m, "JMP") || equals(m, "JMP_IF_TRUE") || equals(m, "JMP_IF_FALSE") || equals(m, "CALL")
             return 3
-        if equals(m, "JMP_IF_TRUE")
-            return 3
-        if equals(m, "JMP_IF_FALSE")
-            return 3
-        if equals(m, "CALL")
+        if equals(m, "CALL_MODULE")
             return 3
         return 1
 
@@ -238,23 +240,21 @@ class Assembler()
         val op_pos: u32 = skip(line, m.size(), u8(32))
         val operand: u8[] = sub(line, op_pos, line.size() - op_pos)
         if equals(m, "PUSH")
-            _emit_u8(0x01)
+            _emit_u8(_opcode(m))
             _emit_i32le(_parse_int(operand))
         else if equals(m, "PUSH_FLOAT")
-            _emit_u8(0x01)
+            _emit_u8(_opcode(m))
             _emit_i32le(_parse_fixed(operand))
-        else if equals(m, "JMP")
-            _emit_u8(0x60)
+        else if equals(m, "JMP") || equals(m, "JMP_IF_TRUE") || equals(m, "JMP_IF_FALSE") || equals(m, "CALL")
+            _emit_u8(_opcode(m))
             _emit_label(operand)
-        else if equals(m, "JMP_IF_TRUE")
-            _emit_u8(0x61)
-            _emit_label(operand)
-        else if equals(m, "JMP_IF_FALSE")
-            _emit_u8(0x62)
-            _emit_label(operand)
-        else if equals(m, "CALL")
-            _emit_u8(0x63)
-            _emit_label(operand)
+        else if equals(m, "CALL_MODULE")
+            val id_str: u8[] = token(operand, u32(0), u8(32))
+            val sub_pos: u32 = skip(operand, id_str.size(), u8(32))
+            val sub_str: u8[] = sub(operand, sub_pos, operand.size() - sub_pos)
+            _emit_u8(_opcode(m))
+            _emit_u8(_parse_int(id_str))
+            _emit_u8(_parse_int(sub_str))
         else
             val op: i32 = _opcode(m)
             if op < 0

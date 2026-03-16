@@ -6,19 +6,7 @@ import event::*
 import config::*
 import opcode::*
 import console::*
-
-// ── VM error codes ────────────────────────────────────────────────────────────
-
-enum VmError
-    NONE
-    STACK_OVERFLOW
-    STACK_UNDERFLOW
-    FRAME_EXCEEDED
-    BAD_OPCODE
-    BAD_SYSCALL
-    BAD_EVENT_CODE
-    SPAWN_FAILED
-    EVENT_FULL
+import vm_error::VmError
 
 // ── VM ────────────────────────────────────────────────────────────────────────
 // Single instance holds both system and app contexts plus the shared event bus.
@@ -46,6 +34,11 @@ class VM()
     // ── Output (readable from tests / host) ──────────────────────────────────
     var output:                i32
 
+    // ── Module registry ───────────────────────────────────────────────────────
+    var _module_slots:         u8[256]               // module_id → slot+1 (0 = empty)
+    var _module_count:         i32
+    var _current_handlers:     Handler[]             // set by _run_execute for module use
+
     // ── Error tracking ────────────────────────────────────────────────────────
     var _last_error:           VmError
 
@@ -58,16 +51,30 @@ class VM()
         _sys_handlers = {&_handlers[0], u32(SYS_MAX_HANDLERS)}
         _app_tasks    = {&_tasks[SYS_MAX_TASKS], u32(APP_MAX_TASKS)}
         _app_handlers = {&_handlers[SYS_MAX_HANDLERS], u32(APP_MAX_HANDLERS)}
-        _ev_head = 0
-        _ev_tail = 0
-        _ev_size = 0
-        output      = 0
-        _last_error = VmError.NONE
+        _ev_head          = 0
+        _ev_tail          = 0
+        _ev_size          = 0
+        output            = 0
+        _last_error       = VmError.NONE
+        _module_count     = 0
+        _current_handlers = {null, 0}
+        for i: i32 in range(0, 256)
+            _module_slots[i] = u8(0)
         for handler: &Handler in _handlers
             handler.active = false
             handler.task = null
         for &task in _tasks
             task.active = false
+        register_module(MODULE_CONSOLE)
+        register_module(MODULE_EVENT)
+
+    // ── Module registry ───────────────────────────────────────────────────────
+
+    fun register_module(id: u8)
+        if _module_count >= 8
+            return
+        _module_slots[u32(id)] = u8(_module_count + 1)
+        _module_count++
 
     // ── Code loading ─────────────────────────────────────────────────────────
 
@@ -250,10 +257,8 @@ class VM()
                 print_str("frame exceeded")
             VmError.BAD_OPCODE:
                 print_str("bad opcode")
-            VmError.BAD_SYSCALL:
-                print_str("bad syscall")
-            VmError.BAD_EVENT_CODE:
-                print_str("bad event code")
+            VmError.BAD_MODULE:
+                print_str("bad module")
             VmError.SPAWN_FAILED:
                 print_str("spawn failed")
             VmError.EVENT_FULL:
@@ -282,6 +287,7 @@ class VM()
     // ── Execute loops ─────────────────────────────────────────────────────────
 
     fun _run_execute(task: &Task, code: u8[], handlers: Handler[])
+        _current_handlers = handlers
         var pc: i32 = task.pc
         task.state = TaskState.RUNNING
 
@@ -446,43 +452,55 @@ class VM()
                     task.frame = task.frame - 1
                     pc = retaddr
                     task.push(retval)
-                OpCode.Syscall:
-                    val sub: i32 = i32(code[pc])
+                OpCode.CallModule:
+                    val mod_id: u8 = code[pc]
                     pc++
-                    match sub
-                        SysCall.PrintInt:
-                            output = task.pop()
-                        SysCall.PrintFixed:
-                            output = task.pop()
-                        _:
-                            _last_error = VmError.BAD_SYSCALL
-                            task.state = TaskState.FINISHED
-                OpCode.Event:
-                    val sub: i32 = i32(code[pc])
+                    val sub: u8 = code[pc]
                     pc++
-                    match sub
-                        EventCode.CreateHandler:
-                            val ha: i32 = task.pop()
-                            val he: i32 = task.pop()
-                            for handler: &Handler in handlers
-                                if !handler.active
-                                    handler.init(he, ha)
-                                    break
-                        EventCode.ExitHandler:
-                            task.state = TaskState.FINISHED
-                        EventCode.HandlerSleep:
-                            task.sleep = task.pop()
-                            task.state = TaskState.SLEEPING
-                        EventCode.Send:
-                            _send(task.pop(), task)
-                        _:
-                            _last_error = VmError.BAD_EVENT_CODE
-                            task.state = TaskState.FINISHED
+                    if mod_id == MODULE_CONSOLE
+                        _handle_console(sub, task)
+                    else if mod_id == MODULE_EVENT
+                        _handle_event(sub, task)
+                    else
+                        _last_error = VmError.BAD_MODULE
+                        task.state = TaskState.FINISHED
                 _:
                     _last_error = VmError.BAD_OPCODE
                     task.state = TaskState.FINISHED
 
         task.pc = pc
+
+    // ── Built-in module handlers ──────────────────────────────────────────────
+
+    fun _handle_console(sub: u8, task: &Task)
+        match i32(sub)
+            ConsoleCode.PrintInt:
+                output = task.pop()
+            ConsoleCode.PrintFixed:
+                output = task.pop()
+            _:
+                _last_error = VmError.BAD_MODULE
+                task.state = TaskState.FINISHED
+
+    fun _handle_event(sub: u8, task: &Task)
+        match i32(sub)
+            EventCode.CreateHandler:
+                val ha: i32 = task.pop()
+                val he: i32 = task.pop()
+                for handler: &Handler in _current_handlers
+                    if !handler.active
+                        handler.init(he, ha)
+                        break
+            EventCode.ExitHandler:
+                task.state = TaskState.FINISHED
+            EventCode.HandlerSleep:
+                task.sleep = task.pop()
+                task.state = TaskState.SLEEPING
+            EventCode.Send:
+                _send(task.pop(), task)
+            _:
+                _last_error = VmError.BAD_MODULE
+                task.state = TaskState.FINISHED
 
 // ── Module-level singleton ────────────────────────────────────────────────────
 

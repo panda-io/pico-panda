@@ -1,3 +1,4 @@
 .micro-panda/*
 out/*
 bin/*
+.DS_Store

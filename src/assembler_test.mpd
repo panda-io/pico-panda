@@ -1,0 +1,135 @@
+import test::assert
+import assembler::Assembler
+import vm::vm_reset
+import vm::vm_load_sys
+import vm::vm_boot_sys
+import vm::vm_tick
+import vm::vm
+
+// ── Shared assembler instance ─────────────────────────────────────────────────
+
+var _asm: Assembler
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+fun _build(src: u8[]) bool
+    _asm.init()
+    if !_asm.pass1_str(src)
+        return false
+    _asm.reset_pc()
+    return _asm.pass2_str(src)
+
+fun _boot_sys(src: u8[]) bool
+    if !_build(src)
+        return false
+    vm_reset()
+    vm_load_sys(_asm.get_bytecode())
+    vm_boot_sys()
+    return true
+
+// ── Basic push and output ─────────────────────────────────────────────────────
+
+@test
+fun test_asm_push()
+    assert(_boot_sys("PUSH 42\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(vm.output == 42)
+
+@test
+fun test_asm_push_hex()
+    assert(_boot_sys("PUSH 0xFF\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(vm.output == 255)
+
+@test
+fun test_asm_push_negative()
+    assert(_boot_sys("PUSH -7\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(vm.output == -7)
+
+// ── Integer arithmetic ────────────────────────────────────────────────────────
+
+@test
+fun test_asm_add()
+    assert(_boot_sys("PUSH 10\nPUSH 3\nADD_INT\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(vm.output == 13)
+
+@test
+fun test_asm_sub()
+    assert(_boot_sys("PUSH 10\nPUSH 3\nSUB_INT\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(vm.output == 7)
+
+@test
+fun test_asm_mul()
+    assert(_boot_sys("PUSH 6\nPUSH 7\nMUL_INT\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(vm.output == 42)
+
+@test
+fun test_asm_neg()
+    assert(_boot_sys("PUSH 5\nNEG_INT\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(vm.output == -5)
+
+// ── Fixed-point ───────────────────────────────────────────────────────────────
+
+@test
+fun test_asm_push_float()
+    // 2.0 * 3.0 = 6.0 → FIXED_TO_INT = 6
+    assert(_boot_sys("PUSH_FLOAT 2.0\nPUSH_FLOAT 3.0\nMUL_FIXED\nFIXED_TO_INT\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(vm.output == 6)
+
+// ── Labels and jumps ──────────────────────────────────────────────────────────
+
+@test
+fun test_asm_forward_label()
+    // condition is false → jump to skip → output 99
+    val src: u8[] = "PUSH 0\nJMP_IF_FALSE skip\nPUSH 1\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\nskip:\nPUSH 99\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    assert(_boot_sys(src))
+    assert(vm.output == 99)
+
+@test
+fun test_asm_backward_label()
+    // count from 0 up to 10, output 10
+    val src: u8[] = "PUSH 0\nloop:\nPUSH 1\nADD_INT\nDUP\nPUSH 10\nCMP_LT_INT\nJMP_IF_TRUE loop\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    assert(_boot_sys(src))
+    assert(vm.output == 10)
+
+// ── CALL / RET ────────────────────────────────────────────────────────────────
+
+@test
+fun test_asm_call_ret()
+    // double(21) = 42
+    val src: u8[] = "PUSH 0\nCALL double\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\ndouble:\nPUSH 21\nPUSH 2\nMUL_INT\nRET\n"
+    assert(_boot_sys(src))
+    assert(vm.output == 42)
+
+// ── Comment stripping ─────────────────────────────────────────────────────────
+
+@test
+fun test_asm_comment()
+    val src: u8[] = "; full-line comment\nPUSH 42  ; inline comment\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    assert(_boot_sys(src))
+    assert(vm.output == 42)
+
+// ── Error cases ───────────────────────────────────────────────────────────────
+
+@test
+fun test_asm_error_unknown_mnemonic()
+    _asm.init()
+    _asm.pass1_str("PUSH 1\nBAD_MNEMONIC\n")
+    _asm.reset_pc()
+    val ok: bool = _asm.pass2_str("PUSH 1\nBAD_MNEMONIC\n")
+    assert(!ok)
+    assert(_asm.error_count() > 0)
+
+@test
+fun test_asm_error_undefined_label()
+    _asm.init()
+    _asm.pass1_str("PUSH 0\nJMP_IF_FALSE nowhere\n")
+    _asm.reset_pc()
+    val ok: bool = _asm.pass2_str("PUSH 0\nJMP_IF_FALSE nowhere\n")
+    assert(!ok)
+    assert(_asm.error_count() > 0)
+
+@test
+fun test_asm_error_duplicate_label()
+    _asm.init()
+    val ok: bool = _asm.pass1_str("main:\nPUSH 0\nmain:\nPUSH 1\n")
+    assert(!ok)
+    assert(_asm.error_count() > 0)

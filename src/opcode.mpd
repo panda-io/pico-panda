@@ -49,18 +49,22 @@ enum OpCode
     JmpIfFalse   = 0x62  // JMP_IF_FALSE addr (u16)
     Call         = 0x63  // CALL addr (u16); args are dropped, no locals
     Ret          = 0x64  // RET
-    // System / event dispatch
-    Syscall      = 0x70
-    Event        = 0x71
+    // Module dispatch
+    CallModule   = 0x70  // CALL_MODULE module_id(u8) sub(u8)
 
-// ── System-call sub-codes (follow OP_SYSCALL byte) ───────────────────────────
+// ── Built-in module IDs ───────────────────────────────────────────────────────
 
-enum SysCall
+const MODULE_CONSOLE: u8 = 0x01
+const MODULE_EVENT:   u8 = 0x02
+
+// ── Console sub-codes (MODULE_CONSOLE) ───────────────────────────────────────
+
+enum ConsoleCode
     PrintInt     = 0x01
     PrintFixed   = 0x02
     PrintStr     = 0x03
 
-// ── Event sub-codes (follow OP_EVENT byte) ────────────────────────────────────
+// ── Event sub-codes (MODULE_EVENT) ────────────────────────────────────────────
 
 enum EventCode
     CreateHandler = 0x01
