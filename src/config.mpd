@@ -18,3 +18,8 @@ const SYS_MAX_HANDLERS: i32 = 4
 const APP_MEMORY_SIZE:  i32 = MAX_MEMORY
 const APP_MAX_TASKS:    i32 = 8
 const APP_MAX_HANDLERS: i32 = 32
+
+// Modules VM runtime limits
+const MAX_MODULES:      i32 = 8
+const MAX_MODULE_ID:    i32 = 128
+

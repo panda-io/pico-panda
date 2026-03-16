@@ -35,7 +35,8 @@ class VM()
     var output:                i32
 
     // ── Module registry ───────────────────────────────────────────────────────
-    var _module_slots:         u8[256]               // module_id → slot+1 (0 = empty)
+    var _module_slots:         u8[MAX_MODULE_ID]     // module_id → slot+1 (0 = empty)
+    var _module_fns:           fun(u8, &Task)[MAX_MODULES]
     var _module_count:         i32
     var _current_handlers:     Handler[]             // set by _run_execute for module use
 
@@ -58,22 +59,35 @@ class VM()
         _last_error       = VmError.NONE
         _module_count     = 0
         _current_handlers = {null, 0}
-        for i: i32 in range(0, 256)
+        for i: i32 in range(0, MAX_MODULE_ID)
             _module_slots[i] = u8(0)
         for handler: &Handler in _handlers
             handler.active = false
             handler.task = null
         for &task in _tasks
             task.active = false
-        register_module(MODULE_CONSOLE)
-        register_module(MODULE_EVENT)
+        register_module(MODULE_CONSOLE, _console_handler)
+        register_module(MODULE_EVENT, _event_handler)
+
+    // ── Module handler support ────────────────────────────────────────────────
+
+    fun current_handlers() Handler[]
+        return _current_handlers
+
+    fun emit_event(id: i32, task: &Task)
+        _send(id, task)
+
+    fun on_module_error(task: &Task)
+        _last_error = VmError.BAD_MODULE
+        task.state = TaskState.FINISHED
 
     // ── Module registry ───────────────────────────────────────────────────────
 
-    fun register_module(id: u8)
+    fun register_module(id: u8, handler: fun(u8, &Task))
         if _module_count >= 8
             return
         _module_slots[u32(id)] = u8(_module_count + 1)
+        _module_fns[_module_count] = handler
         _module_count++
 
     // ── Code loading ─────────────────────────────────────────────────────────
@@ -457,54 +471,52 @@ class VM()
                     pc++
                     val sub: u8 = code[pc]
                     pc++
-                    if mod_id == MODULE_CONSOLE
-                        _handle_console(sub, task)
-                    else if mod_id == MODULE_EVENT
-                        _handle_event(sub, task)
-                    else
+                    val slot: i32 = i32(_module_slots[u32(mod_id)])
+                    if slot == 0
                         _last_error = VmError.BAD_MODULE
                         task.state = TaskState.FINISHED
+                    else
+                        val fn: fun(u8, &Task) = _module_fns[slot - 1]
+                        fn(sub, task)
                 _:
                     _last_error = VmError.BAD_OPCODE
                     task.state = TaskState.FINISHED
 
         task.pc = pc
 
-    // ── Built-in module handlers ──────────────────────────────────────────────
-
-    fun _handle_console(sub: u8, task: &Task)
-        match i32(sub)
-            ConsoleCode.PrintInt:
-                output = task.pop()
-            ConsoleCode.PrintFixed:
-                output = task.pop()
-            _:
-                _last_error = VmError.BAD_MODULE
-                task.state = TaskState.FINISHED
-
-    fun _handle_event(sub: u8, task: &Task)
-        match i32(sub)
-            EventCode.CreateHandler:
-                val ha: i32 = task.pop()
-                val he: i32 = task.pop()
-                for handler: &Handler in _current_handlers
-                    if !handler.active
-                        handler.init(he, ha)
-                        break
-            EventCode.ExitHandler:
-                task.state = TaskState.FINISHED
-            EventCode.HandlerSleep:
-                task.sleep = task.pop()
-                task.state = TaskState.SLEEPING
-            EventCode.Send:
-                _send(task.pop(), task)
-            _:
-                _last_error = VmError.BAD_MODULE
-                task.state = TaskState.FINISHED
-
 // ── Module-level singleton ────────────────────────────────────────────────────
 
 var vm: VM
+
+// ── Built-in module handlers ──────────────────────────────────────────────────
+
+fun _console_handler(sub: u8, task: &Task)
+    match i32(sub)
+        ConsoleCode.PrintInt:
+            vm.output = task.pop()
+        ConsoleCode.PrintFixed:
+            vm.output = task.pop()
+        _:
+            vm.on_module_error(task)
+
+fun _event_handler(sub: u8, task: &Task)
+    match i32(sub)
+        EventCode.CreateHandler:
+            val ha: i32 = task.pop()
+            val he: i32 = task.pop()
+            for handler: &Handler in vm.current_handlers()
+                if !handler.active
+                    handler.init(he, ha)
+                    break
+        EventCode.ExitHandler:
+            task.state = TaskState.FINISHED
+        EventCode.HandlerSleep:
+            task.sleep = task.pop()
+            task.state = TaskState.SLEEPING
+        EventCode.Send:
+            vm.emit_event(task.pop(), task)
+        _:
+            vm.on_module_error(task)
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
