@@ -6,11 +6,20 @@ import vm.signal::*
 import vm.config::*
 import vm.opcode::*
 import console
-import vm.vm_error::VmError
 
 enum Code
     Sys
     App
+
+enum VmError
+    NONE
+    STACK_OVERFLOW
+    STACK_UNDERFLOW
+    FRAME_EXCEEDED
+    BAD_OPCODE
+    BAD_MODULE
+    SPAWN_FAILED
+    SIGNAL_FULL
 
 // ── VM ────────────────────────────────────────────────────────────────────────
 // Single instance holds both system and app contexts plus the shared signal bus.
