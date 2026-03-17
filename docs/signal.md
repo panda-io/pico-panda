@@ -12,7 +12,7 @@ signal handlers and the compiler generates the registration and main automatical
 
 Runs once when the program starts. Use for initialization.
 
-```
+```pico-panda
 @signal(start)
 fun on_start()
     // init variables, load assets, register state
@@ -23,7 +23,7 @@ fun on_start()
 Runs every tick. The tick interval is platform-configured (see below).
 Use for game logic, state updates, drawing.
 
-```
+```pico-panda
 @signal(tick)
 fun on_tick()
     // update and draw
@@ -34,7 +34,7 @@ fun on_tick()
 Runs every tick but only executes the handler every `interval` ticks.
 Useful for logic that doesn't need to run at full tick rate.
 
-```
+```pico-panda
 @signal(tick, 10)
 fun slow_update()
     // runs every 10 ticks
@@ -42,13 +42,13 @@ fun slow_update()
 
 ### `@signal("<name>")`
 
-Custom named signal. Any handler can send this signal via `EVENT SEND`.
+Custom named signal. Any handler can send this signal via `SIGNAL SEND`.
 Multiple handlers can register for the same custom signal.
 
-```
+```pico-panda
 @signal("jump")
 fun on_jump()
-    // respond to jump event
+    // respond to jump signal
 
 @signal("jump")
 fun on_jump_sfx()
@@ -63,7 +63,7 @@ Multiple functions may be annotated with the same signal.
 They are dispatched in **registration order** (top-to-bottom in source).
 Each runs in its own task slot.
 
-```
+```pico-panda
 @signal(tick)
 fun player_update()   // runs first
     ...
@@ -138,7 +138,7 @@ Typical values: `16ms` (≈60fps), `33ms` (≈30fps), `1ms` (high-frequency cont
 
 ### Pico-Panda VM
 
-Events are queued and processed at the **start of each tick** before any task executes.
+Signals are queued and processed at the **start of each tick** before any task executes.
 A signal sent during tick N is received and dispatched at the start of tick N+1.
 Fully deterministic — no mid-tick interruption.
 
@@ -160,7 +160,7 @@ in the fixed pool while doing nothing.
 
 Prefer periodic logic in a `@signal(tick)` handler with a counter in global state:
 
-```
+```asm
 ; discouraged
 loop:
     // do work

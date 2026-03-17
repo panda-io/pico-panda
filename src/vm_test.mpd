@@ -66,7 +66,7 @@ fun _print_int(buf: u8[], i: i32) i32
     i = _wb(buf, i, u8(ConsoleCode.PrintInt))
     return i
 
-// Emit CALL_MODULE EVENT EXIT_HANDLER (3 bytes)
+// Emit CALL_MODULE SIGNAL EXIT_HANDLER (3 bytes)
 fun _exit_handler(buf: u8[], i: i32) i32
     i = _wb(buf, i, u8(OpCode.CallModule))
     i = _wb(buf, i, MODULE_SIGNAL)
@@ -285,19 +285,19 @@ fun test_call_ret()
     _boot({&raw[0], u32(i)})
     assert(equals(_out(), "42"))
 
-// ── Signal / event system ─────────────────────────────────────────────────────
+// ── Signal system ─────────────────────────────────────────────────────
 
 @test
 fun test_signal_handler()
     // Boot code (addr 0):
     //   0: PUSH SIGNAL_SYS_START  5 bytes
     //   5: PUSH 19               5 bytes
-    //  10: EVENT CREATE_HANDLER  3 bytes
-    //  13: EVENT EXIT_HANDLER    3 bytes
+    //  10: SIGNAL CREATE_HANDLER  3 bytes
+    //  13: SIGNAL EXIT_HANDLER    3 bytes
     // Handler (addr 19):
-    //  19: PUSH 77               5 bytes
-    //  24: PRINT_INT             3 bytes
-    //  27: EVENT EXIT_HANDLER    3 bytes
+    //  19: PUSH 77                5 bytes
+    //  24: PRINT_INT              3 bytes
+    //  27: SIGNAL EXIT_HANDLER    3 bytes
     // Binary layout: [boot code][handler at offset 19]
     var raw: u8[64]
     val code: u8[] = {&raw[0], u32(64)}

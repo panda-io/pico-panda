@@ -45,8 +45,8 @@ No native float type. Float literals in ASM (`1.5`) are pseudo-syntax — conver
 ### Execution model
 
 - Stack machine: 8-slot evaluation stack
-- 4 general-purpose registers: R0–R3 (for passing event data)
-- Cooperative multitasking: tasks yield via sleep or event wait, no preemption
+- 4 general-purpose registers: R0–R3 (for passing signal data)
+- Cooperative multitasking: tasks yield via sleep or signal wait, no preemption
 
 **Static limits (MCU)**
 All pool sizes are compile-time constants — no dynamic allocation at runtime.
@@ -73,10 +73,10 @@ Roadmap step 2 (VM implementation) is **complete** — 15/15 tests passing.
 | File | Contents |
 | --- | --- |
 | `config.mpd` | Compile-time constants — array sizes, memory limits |
-| `opcode.mpd` | Opcode + syscall + event subcode constants |
-| `event.mpd` | `Event` class + system event IDs (`EVENT_START=1`, `EVENT_TICK=2`) |
+| `opcode.mpd` | Opcode + syscall + signal subcode constants |
+| `signal.mpd` | `Signal` class + system signal IDs (`SIGNAL_SYS_START=1`, `SIGNAL_APP_START=2`) |
 | `task.mpd` | `Task` class (pc, sp, frame, state, stack[8]), `TaskState` enum |
-| `handler.mpd` | `Handler` class (event_id, addr, task slot=-1 means idle) |
+| `handler.mpd` | `Handler` class (signal_id, addr, task slot=-1 means idle) |
 | `vm.mpd` | `class VM` + module singleton `var vm: VM` + public API functions |
 | `vm_test.mpd` | 15 `@test` functions covering all opcodes |
 | `main.mpd` | Stub `main()` for non-test builds |
@@ -91,7 +91,7 @@ mpd test vm_test.mpd    # from pico-panda/
 
 ```micro-panda
 VM_MAX_FRAMES    = 8     // per-task call stack depth
-VM_MAX_EVENTS    = 32    // event ring buffer size
+VM_MAX_SIGNALS    = 32    // signal ring buffer size
 SYS_MAX_TASKS    = 1     // system context (boot, I/O, scheduler)
 SYS_MAX_HANDLERS = 4
 APP_MAX_TASKS    = 8     // application context
@@ -104,17 +104,17 @@ APP_MAX_HANDLERS = 32
 
 ### Single `class VM`
 
-One module-level instance `var vm: VM` with two independent contexts sharing one event bus:
+One module-level instance `var vm: VM` with two independent contexts sharing one singal bus:
 
 - **System context**: `_sys_code: u8[]`, `_sys_tasks: Task[SYS_MAX_TASKS]`, `_sys_handlers: Handler[SYS_MAX_HANDLERS]`, `_sys_h_count: i32`
 - **App context**: `_app_code: u8[]`, `_app_tasks: Task[APP_MAX_TASKS]`, `_app_handlers: Handler[APP_MAX_HANDLERS]`, `_app_h_count: i32`
-- **Event bus**: `_events: Event[VM_MAX_EVENTS]` ring buffer (`_ev_head`, `_ev_tail`, `_ev_size`)
+- **Signal bus**: `_signals: Signal[VM_MAX_SIGNALS]` ring buffer (`_sig_head`, `_sig_tail`, `_sig_size`)
 - **Test output**: `output: i32` — written by SYSCALL_PRINT_INT / SYSCALL_PRINT_FIXED
 
 ### Tick cycle (each frame)
 
 1. Wake sleeping tasks (decrement sleep counters)
-2. Drain event queue → dispatch to sys and app handler tables (resume or spawn handler task)
+2. Drain signal queue → dispatch to sys and app handler tables (resume or spawn handler task)
 3. Run all RUNNING tasks in both contexts
 
 ### Execute loop
@@ -134,7 +134,7 @@ _sys_h_count = _run_execute(task, _sys_code, hs, _sys_h_count)
 vm_reset()
 vm_load_sys(code: u8[]) / vm_load_app(code: u8[])
 vm_boot_sys() / vm_boot_app()   // spawn task at addr 0
-vm_send(id: i32)                // enqueue event
+vm_send(id: i32)                // enqueue signal
 vm_tick()                       // one full frame
 // read vm.output after tick for PRINT_INT result
 ```
@@ -159,7 +159,7 @@ vm_tick()                       // one full frame
 | `0x63` | CALL | u16 addr | push argc first; args dropped inside loop |
 | `0x64` | RET | — | |
 | `0x70` + sub | SYSCALL | `0x01` PRINT_INT, `0x02` PRINT_FIXED, `0x03` PRINT_STR | |
-| `0x71` + sub | EVENT | `0x01` CREATE_HANDLER, `0x02` EXIT_HANDLER, `0x03` HANDLER_SLEEP, `0x04` SEND | |
+| `0x71` + sub | SIGNAL | `0x01` CREATE_HANDLER, `0x02` EXIT_HANDLER, `0x03` HANDLER_SLEEP, `0x04` SEND | |
 
 ---
 

@@ -1,6 +1,6 @@
 # Pico-Panda VM Specification
 
-A stack-based bytecode virtual machine with cooperative multitasking and an event system.
+A stack-based bytecode virtual machine with cooperative multitasking and an signal system.
 Designed for constrained hardware (MCU) and hosted platforms.
 
 ---
@@ -103,20 +103,20 @@ SLEEPING ──► RUNNING    (sleep timer expires)
 Each VM `tick()` performs in order:
 
 1. Decrement sleep timers for all sleeping tasks; wake those that reach 0
-2. **Process entire event queue** — for each queued event, spawn a handler task for every registered handler (in registration order)
+2. **Process entire signal queue** — for each queued signal, spawn a handler task for every registered handler (in registration order)
 3. Execute all RUNNING tasks until each sleeps or finishes
 
-Event processing happens exclusively at the **start of each tick**, before any task executes. This makes execution fully deterministic: given the same event queue, the same tick always produces the same result.
+Signal processing happens exclusively at the **start of each tick**, before any task executes. This makes execution fully deterministic: given the same signal queue, the same tick always produces the same result.
 
 Tasks are cooperative — they run until they explicitly yield (sleep) or finish. There is no preemption.
 
-> **Note:** This tick-based event model is specific to the Pico-Panda VM. Native Micro-Panda processes signals immediately upon arrival, enabling high-frequency applications (e.g. flight controllers) where latency matters.
+> **Note:** This tick-based signal model is specific to the Pico-Panda VM. Native Micro-Panda processes signals immediately upon arrival, enabling high-frequency applications (e.g. flight controllers) where latency matters.
 
 ---
 
 ## Signal IDs
 
-Signals are identified by a 32-bit integer (`event_id`) in bytecode.
+Signals are identified by a 32-bit integer (`signal_id`) in bytecode.
 
 ### System signals
 
@@ -145,7 +145,7 @@ second user signal → 0x101
 ...
 ```
 
-User signals are only sent and received within the bytecode itself (via `EVENT SEND` / `@signal`), so the host never needs to know their IDs.
+User signals are only sent and received within the bytecode itself (via `SIGNAL SEND` / `@signal`), so the host never needs to know their IDs.
 
 Signal names are **strings in ASM source only** — no names are stored in bytecode.
 
@@ -260,7 +260,7 @@ Push 1 (true) or 0 (false). Pop two values; second-from-top compared to top.
 
 ### Signal module (`MODULE_SIGNAL = 0x02`)
 
-`CALL_MODULE 0x02 <subcode>` — or the planned `SIGNAL <subcode>` assembler mnemonic.
+`CALL_MODULE SIGNAL <subcode>` — numeric form `CALL_MODULE 0x02 <subcode>` also accepted.
 
 | Subcode | Name | Stack effect | Description |
 | :---: | :--- | :--- | :--- |
@@ -306,7 +306,7 @@ Constant pool entries (strings):
 | Locals per frame | 16 |
 | Eval stack depth | 8 |
 | Global segment size | 4 KB |
-| Event queue depth | 16 |
-| Event handlers per signal | 4 |
+| Signal queue depth | 16 |
+| Signal handlers per signal | 4 |
 
 All limits are compile-time constants. HOSTED builds may use dynamic sizing.

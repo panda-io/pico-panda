@@ -13,7 +13,7 @@ enum Code
     App
 
 // ── VM ────────────────────────────────────────────────────────────────────────
-// Single instance holds both system and app contexts plus the shared event bus.
+// Single instance holds both system and app contexts plus the shared signal bus.
 
 class VM()
     val _tasks:                Task[SYS_MAX_TASKS + APP_MAX_TASKS]
@@ -145,7 +145,7 @@ class VM()
     // ── Tick ─────────────────────────────────────────────────────────────────
 
     fun tick(delta: fixed)
-        // 0. Sent tick event
+        // 0. Sent tick signal
         emit_signal(SIGNAL_TICK, i32(delta), 0, 0, 0)
 
         // 1. Wake sleeping tasks
