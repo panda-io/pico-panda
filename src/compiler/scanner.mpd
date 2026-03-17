@@ -1,0 +1,488 @@
+// ── scanner.mpd ───────────────────────────────────────────────────────────────
+// Pico-Panda lexer.
+//
+// Produces a flat HeapList<i32> of tokens.  Each token occupies 3 consecutive
+// slots: [kind, line, value_index].
+//
+//   kind        — TokenKind value
+//   line        — 1-based source line
+//   value_index — index into _strings (for IDENT / LIT_STR),
+//                 or direct int value (for LIT_INT / LIT_FIXED / LIT_TRUE/FALSE)
+//
+// Indentation is tracked with an indent-stack (HeapList<i32> of column widths).
+// INDENT / DEDENT tokens are injected before the first token of each line.
+// NEWLINE is injected at the end of each logical line.
+
+#if HOSTED
+import memory::HeapAllocator
+import collection::HeapList
+import string::*
+
+const TOK_STRIDE: i32 = 3   // slots per token
+
+class Scanner()
+    var _heap:    &HeapAllocator
+    var _src:     u8[]
+    var _pos:     i32 = 0
+    var _line:    i32 = 1
+    var _col:     i32 = 1   // 1-based column after last advance
+
+    // ── Output token stream ────────────────────────────────────────────────
+    var _tokens:  HeapList<i32>   // [kind, line, val] × N
+
+    // ── String interning pool ─────────────────────────────────────────────
+    // Each string is stored as raw bytes in _str_data; _str_off[i] is the
+    // start offset and _str_len[i] is the length. Index 0 = empty string.
+    // _str_data is a raw heap slice so we can return sub-slices by address.
+    var _str_data:      u8[]
+    var _str_data_size: i32 = 0
+    var _str_off:  HeapList<i32>
+    var _str_len:  HeapList<i32>
+
+    // ── Indent stack ──────────────────────────────────────────────────────
+    var _indent_stack: HeapList<i32>  // column widths (starts with [0])
+
+    var _errors:     i32 = 0
+    var _had_tokens: bool = false   // true if current line has emitted a content token
+
+    fun init(heap: &HeapAllocator, src: u8[])
+        _heap   = heap
+        _src    = src
+        _pos    = 0
+        _line   = 1
+        _col    = 1
+        _errors     = 0
+        _had_tokens = false
+        _tokens.init(heap)
+        _str_data      = heap.allocate_array<u8>(256)
+        _str_data_size = 0
+        _str_off.init(heap)
+        _str_len.init(heap)
+        _indent_stack.init(heap)
+        // intern empty string at index 0
+        _str_off.push(0)
+        _str_len.push(0)
+        // indent base level = column 0
+        _indent_stack.push(0)
+
+    // ── Public: run the full scan ──────────────────────────────────────────
+
+    fun scan() bool
+        _scan_all()
+        return _errors == 0
+
+    fun token_count() i32
+        return i32(_tokens.size()) / TOK_STRIDE
+
+    fun tok_kind(i: i32) i32
+        return _tokens.get(u32(i * TOK_STRIDE))
+
+    fun tok_line(i: i32) i32
+        return _tokens.get(u32(i * TOK_STRIDE + 1))
+
+    fun tok_val(i: i32) i32
+        return _tokens.get(u32(i * TOK_STRIDE + 2))
+
+    fun str_get(idx: i32) u8[]
+        val off := u32(_str_off.get(u32(idx)))
+        val len := u32(_str_len.get(u32(idx)))
+        return {&_str_data[off], len}
+
+    fun error_count() i32
+        return _errors
+
+    // ── Internals ─────────────────────────────────────────────────────────
+
+    fun _peek() u8
+        if _pos >= i32(_src.size())
+            return u8(0)
+        return _src[u32(_pos)]
+
+    fun _peek2() u8
+        if _pos + 1 >= i32(_src.size())
+            return u8(0)
+        return _src[u32(_pos + 1)]
+
+    fun _advance() u8
+        val c: u8 = _src[u32(_pos)]
+        _pos++
+        if c == u8(10)   // '\n'
+            _line++
+            _col = 1
+        else
+            _col++
+        return c
+
+    fun _is_digit(c: u8) bool
+        return c >= u8(48) && c <= u8(57)   // '0'..'9'
+
+    fun _is_alpha(c: u8) bool
+        return (c >= u8(65) && c <= u8(90)) || (c >= u8(97) && c <= u8(122)) || c == u8(95)
+
+    fun _is_alnum(c: u8) bool
+        return _is_alpha(c) || _is_digit(c)
+
+    fun _is_hex(c: u8) bool
+        return _is_digit(c) || (c >= u8(65) && c <= u8(70)) || (c >= u8(97) && c <= u8(102))
+
+    fun _emit(kind: i32, line: i32, v: i32)
+        _tokens.push(kind)
+        _tokens.push(line)
+        _tokens.push(v)
+        val structural: bool = kind == i32(TokenKind.NEWLINE) || kind == i32(TokenKind.INDENT) || kind == i32(TokenKind.DEDENT)
+        if !structural
+            _had_tokens = true
+
+    fun _intern(start: i32, len: i32) i32
+        // Search for existing entry
+        var i: u32 = 1
+        while i < _str_off.size()
+            if _str_len.get(i) == len
+                val off := u32(_str_off.get(i))
+                var found: bool = true
+                var j: i32 = 0
+                while j < len
+                    if _str_data[off + u32(j)] != _src[u32(start + j)]
+                        found = false
+                        break
+                    j++
+                if found
+                    return i32(i)
+            i++
+        // New entry — grow _str_data if needed
+        val idx: i32 = i32(_str_off.size())
+        val data_off: i32 = _str_data_size
+        val needed: i32 = _str_data_size + len
+        if needed > i32(_str_data.size())
+            var cap: i32 = i32(_str_data.size()) * 2
+            if cap < needed
+                cap = needed + 256
+            _str_data = _heap.realloc_array<u8>(_str_data, u32(cap))
+        var j: i32 = 0
+        while j < len
+            _str_data[u32(_str_data_size)] = _src[u32(start + j)]
+            _str_data_size++
+            j++
+        _str_off.push(data_off)
+        _str_len.push(len)
+        return idx
+
+    fun _parse_hex_int(start: i32) i32
+        var result: i32 = 0
+        var i: i32 = start
+        while i < i32(_src.size()) && _is_hex(_src[u32(i)])
+            val c: u8 = _src[u32(i)]
+            var digit: i32 = 0
+            if c >= u8(97)
+                digit = i32(c) - 87
+            else if c >= u8(65)
+                digit = i32(c) - 55
+            else
+                digit = i32(c) - 48
+            result = (result << 4) | digit
+            i++
+        _pos = i
+        return result
+
+    fun _keyword_kind(s: u8[]) i32
+        if equals(s, "var")
+            return i32(TokenKind.KW_VAR)
+        if equals(s, "val")
+            return i32(TokenKind.KW_VAL)
+        if equals(s, "const")
+            return i32(TokenKind.KW_CONST)
+        if equals(s, "fun")
+            return i32(TokenKind.KW_FUN)
+        if equals(s, "data")
+            return i32(TokenKind.KW_DATA)
+        if equals(s, "enum")
+            return i32(TokenKind.KW_ENUM)
+        if equals(s, "if")
+            return i32(TokenKind.KW_IF)
+        if equals(s, "else")
+            return i32(TokenKind.KW_ELSE)
+        if equals(s, "while")
+            return i32(TokenKind.KW_WHILE)
+        if equals(s, "for")
+            return i32(TokenKind.KW_FOR)
+        if equals(s, "in")
+            return i32(TokenKind.KW_IN)
+        if equals(s, "return")
+            return i32(TokenKind.KW_RETURN)
+        if equals(s, "break")
+            return i32(TokenKind.KW_BREAK)
+        if equals(s, "continue")
+            return i32(TokenKind.KW_CONTINUE)
+        if equals(s, "match")
+            return i32(TokenKind.KW_MATCH)
+        if equals(s, "int")
+            return i32(TokenKind.KW_INT)
+        if equals(s, "fixed")
+            return i32(TokenKind.KW_FIXED)
+        if equals(s, "bool")
+            return i32(TokenKind.KW_BOOL)
+        if equals(s, "byte")
+            return i32(TokenKind.KW_BYTE)
+        if equals(s, "true")
+            return i32(TokenKind.LIT_TRUE)
+        if equals(s, "false")
+            return i32(TokenKind.LIT_FALSE)
+        return i32(TokenKind.IDENT)
+
+    fun _scan_number(line: i32) bool
+        val start: i32 = _pos
+        var is_fixed: bool = false
+        // hex
+        if _peek() == u8(48) && (_peek2() == u8(120) || _peek2() == u8(88))  // '0x'/'0X'
+            _advance()  // '0'
+            _advance()  // 'x'
+            val v: i32 = _parse_hex_int(_pos)
+            _emit(i32(TokenKind.LIT_INT), line, v)
+            return true
+        // decimal / fixed
+        var int_val: i32 = 0
+        while _is_digit(_peek())
+            int_val = int_val * 10 + (i32(_advance()) - 48)
+        if _peek() == u8(46) && _is_digit(_peek2())   // '.' followed by digit
+            is_fixed = true
+            _advance()  // consume '.'
+            var denom: i32 = 1
+            var frac: i32 = 0
+            while _is_digit(_peek())
+                frac  = frac * 10 + (i32(_advance()) - 48)
+                denom = denom * 10
+            val raw: i32 = (int_val << 16) + (frac * 65536) / denom
+            _emit(i32(TokenKind.LIT_FIXED), line, raw)
+        else
+            _emit(i32(TokenKind.LIT_INT), line, int_val)
+        return true
+
+    fun _scan_string(line: i32) bool
+        _advance()  // consume opening '"'
+        val start: i32 = _pos
+        while _pos < i32(_src.size()) && _src[u32(_pos)] != u8(34)  // '"'
+            if _src[u32(_pos)] == u8(92)   // '\'
+                _pos++
+            _pos++
+        val len: i32 = _pos - start
+        val idx: i32 = _intern(start, len)
+        if _pos < i32(_src.size())
+            _advance()  // consume closing '"'
+        _emit(i32(TokenKind.LIT_STR), line, idx)
+        return true
+
+    fun _scan_ident(line: i32) bool
+        val start: i32 = _pos
+        while _is_alnum(_peek())
+            _advance()
+        val len: i32 = _pos - start
+        val s: u8[] = {&_src[u32(start)], u32(len)}
+        val kw: i32 = _keyword_kind(s)
+        if kw == i32(TokenKind.LIT_TRUE)
+            _emit(kw, line, 1)
+        else if kw == i32(TokenKind.LIT_FALSE)
+            _emit(kw, line, 0)
+        else if kw == i32(TokenKind.IDENT)
+            val idx: i32 = _intern(start, len)
+            _emit(i32(TokenKind.IDENT), line, idx)
+        else
+            _emit(kw, line, 0)
+        return true
+
+    // Count leading spaces on the current line (called at line start).
+    fun _measure_indent() i32
+        var col: i32 = 0
+        var i: i32 = _pos
+        while i < i32(_src.size()) && _src[u32(i)] == u8(32)  // ' '
+            col++
+            i++
+        return col
+
+    fun _handle_indent(col: i32, line: i32)
+        val top: i32 = _indent_stack.get(_indent_stack.size() - 1)
+        if col > top
+            _indent_stack.push(col)
+            _emit(i32(TokenKind.INDENT), line, col)
+        else
+            while _indent_stack.size() > 1 && _indent_stack.get(_indent_stack.size() - 1) > col
+                _indent_stack.pop()
+                _emit(i32(TokenKind.DEDENT), line, col)
+
+    // UTF-8 arrow → (0xE2 0x86 0x92)
+    fun _is_arrow_utf8() bool
+        if _pos + 2 >= i32(_src.size())
+            return false
+        return _src[u32(_pos)] == u8(0xE2) && _src[u32(_pos + 1)] == u8(0x86) && _src[u32(_pos + 2)] == u8(0x92)
+
+    fun _scan_all()
+        var at_line_start: bool = true
+        while _pos < i32(_src.size())
+            val line: i32 = _line
+            val c: u8 = _peek()
+
+            // ── blank / comment lines ──────────────────────────────────────
+            if c == u8(10)   // '\n'
+                _advance()
+                if _had_tokens
+                    _emit(i32(TokenKind.NEWLINE), line, 0)
+                    _had_tokens = false
+                at_line_start = true
+                continue
+            if c == u8(13)   // '\r'
+                _advance()
+                continue
+            if c == u8(32) || c == u8(9)   // space / tab
+                if at_line_start
+                    val col: i32 = _measure_indent()
+                    _handle_indent(col, line)
+                    // skip the spaces
+                    while _pos < i32(_src.size()) && (_src[u32(_pos)] == u8(32) || _src[u32(_pos)] == u8(9))
+                        _advance()
+                    at_line_start = false
+                else
+                    _advance()
+                continue
+            if c == u8(47) && _peek2() == u8(47)   // '//'
+                while _pos < i32(_src.size()) && _src[u32(_pos)] != u8(10)
+                    _advance()
+                continue
+
+            // ── dedent / indent at start of non-blank line ─────────────────
+            if at_line_start
+                val col: i32 = 0   // no leading spaces — back to base
+                _handle_indent(col, line)
+                at_line_start = false
+
+            // ── numbers ───────────────────────────────────────────────────
+            if _is_digit(c) || (c == u8(45) && _is_digit(_peek2()))  // '-' digit
+                if c == u8(45)
+                    _advance()
+                val num_line: i32 = _line
+                _scan_number(num_line)
+                continue
+
+            // ── strings ───────────────────────────────────────────────────
+            if c == u8(34)   // '"'
+                _scan_string(line)
+                continue
+
+            // ── identifiers / keywords ────────────────────────────────────
+            if _is_alpha(c)
+                _scan_ident(line)
+                continue
+
+            // ── UTF-8 arrow → ──────────────────────────────────────────────
+            if _is_arrow_utf8()
+                _advance()
+                _advance()
+                _advance()
+                _emit(i32(TokenKind.ARROW), line, 0)
+                continue
+
+            // ── two-char operators ─────────────────────────────────────────
+            _advance()
+            if c == u8(58) && _peek() == u8(61)   // ':='
+                _advance()
+                _emit(i32(TokenKind.WALRUS), line, 0)
+            else if c == u8(60) && _peek() == u8(60)   // '<<'
+                _advance()
+                _emit(i32(TokenKind.LSHIFT), line, 0)
+            else if c == u8(62) && _peek() == u8(62)   // '>>'
+                _advance()
+                _emit(i32(TokenKind.RSHIFT), line, 0)
+            else if c == u8(61) && _peek() == u8(61)   // '=='
+                _advance()
+                _emit(i32(TokenKind.EQEQ), line, 0)
+            else if c == u8(33) && _peek() == u8(61)   // '!='
+                _advance()
+                _emit(i32(TokenKind.NEQ), line, 0)
+            else if c == u8(60) && _peek() == u8(61)   // '<='
+                _advance()
+                _emit(i32(TokenKind.LE), line, 0)
+            else if c == u8(62) && _peek() == u8(61)   // '>='
+                _advance()
+                _emit(i32(TokenKind.GE), line, 0)
+            else if c == u8(38) && _peek() == u8(38)   // '&&'
+                _advance()
+                _emit(i32(TokenKind.AND_AND), line, 0)
+            else if c == u8(124) && _peek() == u8(124)  // '||'
+                _advance()
+                _emit(i32(TokenKind.OR_OR), line, 0)
+            else if c == u8(43) && _peek() == u8(61)   // '+='
+                _advance()
+                _emit(i32(TokenKind.PLUS_EQ), line, 0)
+            else if c == u8(45) && _peek() == u8(61)   // '-='
+                _advance()
+                _emit(i32(TokenKind.MINUS_EQ), line, 0)
+            else if c == u8(42) && _peek() == u8(61)   // '*='
+                _advance()
+                _emit(i32(TokenKind.STAR_EQ), line, 0)
+            else if c == u8(47) && _peek() == u8(61)   // '/='
+                _advance()
+                _emit(i32(TokenKind.SLASH_EQ), line, 0)
+            else if c == u8(37) && _peek() == u8(61)   // '%='
+                _advance()
+                _emit(i32(TokenKind.PERCENT_EQ), line, 0)
+            else if c == u8(45) && _peek() == u8(62)   // '->'
+                _advance()
+                _emit(i32(TokenKind.ARROW), line, 0)
+            else if c == u8(46) && _peek() == u8(46)   // '..'
+                _advance()
+                _emit(i32(TokenKind.DOTDOT), line, 0)
+            else if c == u8(123) && _peek() == u8(38)  // '{&'
+                _advance()
+                _emit(i32(TokenKind.AMP_BRACE), line, 0)
+            else if c == u8(43)
+                _emit(i32(TokenKind.PLUS),       line, 0)
+            else if c == u8(45)
+                _emit(i32(TokenKind.MINUS),      line, 0)
+            else if c == u8(42)
+                _emit(i32(TokenKind.STAR),       line, 0)
+            else if c == u8(47)
+                _emit(i32(TokenKind.SLASH),      line, 0)
+            else if c == u8(37)
+                _emit(i32(TokenKind.PERCENT),    line, 0)
+            else if c == u8(38)
+                _emit(i32(TokenKind.AMP),        line, 0)
+            else if c == u8(124)
+                _emit(i32(TokenKind.PIPE),       line, 0)
+            else if c == u8(94)
+                _emit(i32(TokenKind.CARET),      line, 0)
+            else if c == u8(126)
+                _emit(i32(TokenKind.TILDE),      line, 0)
+            else if c == u8(61)
+                _emit(i32(TokenKind.EQ),         line, 0)
+            else if c == u8(60)
+                _emit(i32(TokenKind.LT),         line, 0)
+            else if c == u8(62)
+                _emit(i32(TokenKind.GT),         line, 0)
+            else if c == u8(33)
+                _emit(i32(TokenKind.BANG),       line, 0)
+            else if c == u8(40)
+                _emit(i32(TokenKind.LPAREN),     line, 0)
+            else if c == u8(41)
+                _emit(i32(TokenKind.RPAREN),     line, 0)
+            else if c == u8(91)
+                _emit(i32(TokenKind.LBRACKET),   line, 0)
+            else if c == u8(93)
+                _emit(i32(TokenKind.RBRACKET),   line, 0)
+            else if c == u8(58)
+                _emit(i32(TokenKind.COLON),      line, 0)
+            else if c == u8(44)
+                _emit(i32(TokenKind.COMMA),      line, 0)
+            else if c == u8(46)
+                _emit(i32(TokenKind.DOT),        line, 0)
+            else if c == u8(64)
+                _emit(i32(TokenKind.AT),         line, 0)
+            else if c == u8(125)
+                _emit(i32(TokenKind.RBRACE),     line, 0)
+            else if c == u8(95)
+                _emit(i32(TokenKind.UNDERSCORE), line, 0)
+            else
+                _errors++
+        // ── close any open indent levels ──────────────────────────────────
+        while _indent_stack.size() > 1
+            _indent_stack.pop()
+            _emit(i32(TokenKind.DEDENT), _line, 0)
+        _emit(i32(TokenKind.EOF), _line, 0)
+#end

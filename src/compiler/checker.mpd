@@ -1,0 +1,471 @@
+// ── checker.mpd ───────────────────────────────────────────────────────────────
+// Type checker for the Pico-Panda compiler.
+//
+// Two passes:
+//   Pass 1a: Register named types (data/enum) in TypeTable.
+//   Pass 1b: Resolve named-type placeholders (4000+si) in stored type_ids.
+//   Pass 1c: Register global symbols (var/val/const/fun/data/enum) in SymbolTable.
+//   Pass 2:  Type-check each function body.
+//
+// After check(), types() and syms() expose the populated tables for codegen.
+// expr_type(h) returns the inferred type_id for expression node h.
+
+#if HOSTED
+import memory::HeapAllocator
+import collection::HeapList
+import compiler.scanner::Scanner
+import compiler.ast::*
+import compiler.token::TokenKind
+import compiler.types::*
+import compiler.symbols::*
+import compiler.parser::DeclList
+import console::*
+import string::*
+
+class Checker()
+    var _heap:    &HeapAllocator
+    var _scan:    &Scanner
+    var _nodes:   &NodePool
+    var _decls:   &DeclList
+    var _types:   TypeTable
+    var _syms:    SymbolTable
+
+    // Inferred type per expression node handle (indexed by handle int).
+    var _expr_types: HeapList<i32>
+
+    var _errors:  i32 = 0
+    var _cur_ret: i32 = TYPE_NONE  // return type of current function
+    var _in_loop: i32 = 0          // loop nesting depth (for break/continue)
+
+    fun init(heap: &HeapAllocator, scan: &Scanner, nodes: &NodePool, decls: &DeclList)
+        _heap  = heap
+        _scan  = scan
+        _nodes = nodes
+        _decls = decls
+        _types.init(heap)
+        _syms.init(heap)
+        _expr_types.init(heap)
+
+    fun check() bool
+        _errors = 0
+        _pass1_types()
+        _resolve_all_types()
+        _pass1_globals()
+        _pass2()
+        return _errors == 0
+
+    fun error_count() i32
+        return _errors
+
+    fun types() &TypeTable
+        return &_types
+
+    fun syms() &SymbolTable
+        return &_syms
+
+    // Return inferred type for expression node h (-1 = not yet checked).
+    fun expr_type(h: i32) i32
+        if h < 0 || h >= i32(_expr_types.size())
+            return TYPE_NONE
+        return _expr_types.get(u32(h))
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+
+    fun _error(msg: u8[])
+        print_str("check error: ")
+        print_str(msg)
+        print_str("\n")
+        _errors++
+
+    fun _set_expr_type(h: i32, t: i32)
+        while i32(_expr_types.size()) <= h
+            _expr_types.push(TYPE_NONE)
+        _expr_types.set(u32(h), t)
+
+    // Resolve a raw type_id: converts 4000+si placeholders to real TypeTable IDs.
+    fun _resolve_type(raw: i32) i32
+        if raw >= 4000
+            val si: i32 = raw - 4000
+            val name: u8[] = _scan.str_get(si)
+            val id: i32 = _types.lookup(name)
+            if id == TYPE_NONE
+                _error("unknown type")
+                return TYPE_NONE
+            return id
+        return raw
+
+    // ── Pass 1a: Register named types ────────────────────────────────────
+
+    fun _pass1_types()
+        var i: i32 = 0
+        while i < _decls.count()
+            val k: i32 = _decls.kind(i)
+            if k == i32(DeclKind.DATA)
+                val name_si: i32 = _decls.d0(i)
+                val name: u8[] = _scan.str_get(name_si)
+                val type_id: i32 = _types.register(name, i32(TypeCategory.DATA))
+                val fields_start: i32 = _decls.d1(i)
+                val fields_count: i32 = _decls.d2(i)
+                var j: i32 = 0
+                while j < fields_count
+                    val fname_si: i32 = _nodes.child_get(fields_start + j * 2)
+                    val ftype_raw: i32 = _nodes.child_get(fields_start + j * 2 + 1)
+                    _types.add_field(type_id, fname_si, ftype_raw)
+                    j++
+            else if k == i32(DeclKind.ENUM_DECL)
+                val name_si: i32 = _decls.d0(i)
+                val name: u8[] = _scan.str_get(name_si)
+                val type_id: i32 = _types.register(name, i32(TypeCategory.ENUM))
+                val variants_start: i32 = _decls.d1(i)
+                val variants_count: i32 = _decls.d2(i)
+                var j: i32 = 0
+                while j < variants_count
+                    val vname_si: i32 = _nodes.child_get(variants_start + j * 2)
+                    val vval: i32 = _nodes.child_get(variants_start + j * 2 + 1)
+                    _types.add_variant(type_id, vname_si, vval)
+                    j++
+            i++
+
+    // ── Pass 1b: Resolve field-type placeholders ─────────────────────────
+
+    fun _resolve_all_types()
+        var i: i32 = 0
+        while i < _decls.count()
+            val k: i32 = _decls.kind(i)
+            if k == i32(DeclKind.DATA)
+                val name_si: i32 = _decls.d0(i)
+                val name: u8[] = _scan.str_get(name_si)
+                val type_id: i32 = _types.lookup(name)
+                if type_id != TYPE_NONE
+                    val fc: i32 = _types.field_count(type_id)
+                    var j: i32 = 0
+                    while j < fc
+                        val raw: i32 = _types.field_type(type_id, j)
+                        val resolved: i32 = _resolve_type(raw)
+                        _types.set_field_type(type_id, j, resolved)
+                        j++
+            i++
+
+    // ── Pass 1c: Register global symbols ─────────────────────────────────
+
+    fun _pass1_globals()
+        var i: i32 = 0
+        while i < _decls.count()
+            val k: i32 = _decls.kind(i)
+            if k == i32(DeclKind.FUN)
+                val name_si: i32 = _decls.d0(i)
+                val name: u8[] = _scan.str_get(name_si)
+                val ret_raw: i32 = _decls.ret(i)
+                val ret_t: i32 = _resolve_type(ret_raw)
+                _syms.define_global(name_si, name, i32(SymbolKind.FUN), ret_t, i, 0)
+            else if k == i32(DeclKind.GLOBAL_VAR)
+                val name_si: i32 = _decls.d0(i)
+                val name: u8[] = _scan.str_get(name_si)
+                val type_raw: i32 = _decls.d1(i)
+                val type_id: i32 = _resolve_type(type_raw)
+                val is_val: i32 = _decls.d3(i)
+                var kind: i32 = i32(SymbolKind.VAR)
+                if is_val != 0
+                    kind = i32(SymbolKind.VAL)
+                _syms.define_global(name_si, name, kind, type_id, 0, is_val)
+            else if k == i32(DeclKind.DATA)
+                val name_si: i32 = _decls.d0(i)
+                val name: u8[] = _scan.str_get(name_si)
+                val type_id: i32 = _types.lookup(name)
+                _syms.define_global(name_si, name, i32(SymbolKind.DATA_TYPE), type_id, 0, 0)
+            else if k == i32(DeclKind.ENUM_DECL)
+                val name_si: i32 = _decls.d0(i)
+                val name: u8[] = _scan.str_get(name_si)
+                val type_id: i32 = _types.lookup(name)
+                _syms.define_global(name_si, name, i32(SymbolKind.ENUM_TYPE), type_id, 0, 0)
+            i++
+
+    // ── Pass 2: Type-check each function ─────────────────────────────────
+
+    fun _pass2()
+        var i: i32 = 0
+        while i < _decls.count()
+            if _decls.kind(i) == i32(DeclKind.FUN)
+                _check_fun(i)
+            i++
+
+    fun _check_fun(di: i32)
+        _cur_ret  = _resolve_type(_decls.ret(di))
+        _in_loop  = 0
+        _syms.push_frame()
+        val params_start: i32 = _decls.d1(di)
+        val params_count: i32 = _decls.d2(di)
+        var j: i32 = 0
+        while j < params_count
+            val pname_si: i32 = _nodes.child_get(params_start + j * 2)
+            val ptype_raw: i32 = _nodes.child_get(params_start + j * 2 + 1)
+            val ptype: i32 = _resolve_type(ptype_raw)
+            _syms.define_param_named(pname_si, _scan.str_get(pname_si), ptype)
+            j++
+        val body: i32 = _decls.d3(di)
+        _check_stmt(body)
+        _syms.pop_frame()
+
+    // ── Statement checking ────────────────────────────────────────────────
+
+    fun _check_stmt(h: i32)
+        if h < 0
+            return
+        val k: i32 = _nodes.kind(h)
+        if k == i32(StmtKind.BLOCK)
+            _check_block(h)
+        else if k == i32(StmtKind.VAR_DECL)
+            _check_var_decl(h)
+        else if k == i32(StmtKind.CONST_DECL)
+            _check_const_decl(h)
+        else if k == i32(StmtKind.ASSIGN)
+            _check_assign(h)
+        else if k == i32(StmtKind.IF)
+            _check_if(h)
+        else if k == i32(StmtKind.WHILE)
+            _check_while(h)
+        else if k == i32(StmtKind.FOR_RANGE)
+            _check_for_range(h)
+        else if k == i32(StmtKind.FOR_IN)
+            _check_for_in(h)
+        else if k == i32(StmtKind.MATCH)
+            _check_match(h)
+        else if k == i32(StmtKind.RETURN)
+            _check_return(h)
+        else if k == i32(StmtKind.BREAK) || k == i32(StmtKind.CONTINUE)
+            if _in_loop == 0
+                _error("break/continue outside loop")
+        else if k == i32(StmtKind.EXPR_STMT)
+            _check_expr(_nodes.d0(h))
+
+    fun _check_block(h: i32)
+        val stmts_start: i32 = _nodes.d0(h)
+        val stmts_count: i32 = _nodes.d1(h)
+        var i: i32 = 0
+        while i < stmts_count
+            _check_stmt(_nodes.child_get(stmts_start + i))
+            i++
+
+    fun _check_var_decl(h: i32)
+        val name_si: i32 = _nodes.d0(h)
+        val type_raw: i32 = _nodes.d1(h)
+        val init: i32     = _nodes.d2(h)
+        val is_val: i32   = _nodes.d3(h)
+        var type_id: i32  = _resolve_type(type_raw)
+        if init != -1
+            val init_t: i32 = _check_expr(init)
+            if type_id == TYPE_NONE
+                type_id = init_t
+        var kind: i32 = i32(SymbolKind.VAR)
+        if is_val != 0
+            kind = i32(SymbolKind.VAL)
+        _syms.define_local_named(name_si, _scan.str_get(name_si), kind, type_id, is_val)
+
+    fun _check_const_decl(h: i32)
+        val name_si: i32 = _nodes.d0(h)
+        val type_raw: i32 = _nodes.d1(h)
+        val init: i32     = _nodes.d2(h)
+        var type_id: i32  = _resolve_type(type_raw)
+        if init != -1
+            val init_t: i32 = _check_expr(init)
+            if type_id == TYPE_NONE
+                type_id = init_t
+        _syms.define_local_named(name_si, _scan.str_get(name_si), i32(SymbolKind.CONST), type_id, 1)
+
+    fun _check_assign(h: i32)
+        val lhs: i32 = _nodes.d0(h)
+        val rhs: i32 = _nodes.d1(h)
+        _check_expr(lhs)
+        _check_expr(rhs)
+
+    fun _check_if(h: i32)
+        _check_expr(_nodes.d0(h))
+        _check_stmt(_nodes.d1(h))
+        if _nodes.d2(h) != -1
+            _check_stmt(_nodes.d2(h))
+
+    fun _check_while(h: i32)
+        _check_expr(_nodes.d0(h))
+        _in_loop++
+        _check_stmt(_nodes.d1(h))
+        _in_loop--
+
+    fun _check_for_range(h: i32)
+        val var_si: i32 = _nodes.d0(h)
+        val lo: i32 = _nodes.d1(h)
+        val hi: i32 = _nodes.d2(h)
+        val body: i32 = _nodes.d3(h)
+        _check_expr(lo)
+        _check_expr(hi)
+        _syms.define_local_named(var_si, _scan.str_get(var_si), i32(SymbolKind.VAR), TYPE_INT, 0)
+        _in_loop++
+        _check_stmt(body)
+        _in_loop--
+
+    fun _check_for_in(h: i32)
+        val var_si: i32 = _nodes.d0(h)
+        val iter: i32   = _nodes.d1(h)
+        val body: i32   = _nodes.d2(h)
+        val idx_si: i32 = _nodes.d3(h)
+        val iter_type: i32 = _check_expr(iter)
+        var elem_type: i32 = TYPE_INT
+        if iter_type >= TYPE_SLICE_BASE
+            elem_type = iter_type - TYPE_SLICE_BASE
+        else if iter_type >= TYPE_ARRAY_BASE
+            elem_type = iter_type - TYPE_ARRAY_BASE
+        _syms.define_local_named(var_si, _scan.str_get(var_si), i32(SymbolKind.VAR), elem_type, 0)
+        if idx_si != -1
+            _syms.define_local_named(idx_si, _scan.str_get(idx_si), i32(SymbolKind.VAR), TYPE_INT, 0)
+        _in_loop++
+        _check_stmt(body)
+        _in_loop--
+
+    fun _check_match(h: i32)
+        val expr: i32       = _nodes.d0(h)
+        val arms_start: i32 = _nodes.d1(h)
+        val arms_count: i32 = _nodes.d2(h)
+        _check_expr(expr)
+        var i: i32 = 0
+        while i < arms_count
+            val arm_h: i32 = _nodes.child_get(arms_start + i)
+            val pat: i32   = _nodes.d0(arm_h)
+            val body: i32  = _nodes.d1(arm_h)
+            if pat != -1
+                _check_expr(pat)
+            _check_stmt(body)
+            i++
+
+    fun _check_return(h: i32)
+        val e: i32 = _nodes.d0(h)
+        if e != -1
+            _check_expr(e)
+
+    // ── Expression type inference ─────────────────────────────────────────
+
+    fun _check_expr(h: i32) i32
+        if h < 0
+            return TYPE_NONE
+        val k: i32 = _nodes.kind(h)
+        var t: i32 = TYPE_NONE
+        if k == i32(ExprKind.LIT_INT)
+            t = TYPE_INT
+        else if k == i32(ExprKind.LIT_FIXED)
+            t = TYPE_FIXED
+        else if k == i32(ExprKind.LIT_STR)
+            t = TYPE_SLICE_BASE + TYPE_BYTE
+        else if k == i32(ExprKind.LIT_BOOL)
+            t = TYPE_BOOL
+        else if k == i32(ExprKind.IDENT)
+            t = _check_ident(h)
+        else if k == i32(ExprKind.BINARY)
+            t = _check_binary(h)
+        else if k == i32(ExprKind.UNARY)
+            t = _check_unary(h)
+        else if k == i32(ExprKind.CALL)
+            t = _check_call(h)
+        else if k == i32(ExprKind.INDEX)
+            t = _check_index(h)
+        else if k == i32(ExprKind.FIELD)
+            t = _check_field(h)
+        else if k == i32(ExprKind.CAST)
+            t = _nodes.d0(h)
+            _check_expr(_nodes.d1(h))
+        else if k == i32(ExprKind.REF)
+            val inner: i32 = _check_expr(_nodes.d0(h))
+            t = TYPE_REF_BASE + inner
+        else if k == i32(ExprKind.SLICE_LIT)
+            _check_expr(_nodes.d0(h))
+            _check_expr(_nodes.d1(h))
+            t = TYPE_SLICE_BASE + TYPE_BYTE
+        else if k == i32(ExprKind.SLICE_LEN)
+            _check_expr(_nodes.d0(h))
+            t = TYPE_INT
+        _set_expr_type(h, t)
+        return t
+
+    fun _check_ident(h: i32) i32
+        val si: i32 = _nodes.d0(h)
+        val li: i32 = _syms.lookup_local(si)
+        if li >= 0
+            return _syms.local_type(li)
+        val name: u8[] = _scan.str_get(si)
+        val gi: i32 = _syms.lookup_global(name)
+        if gi >= 0
+            return _syms.global_type(gi)
+        _error("undefined identifier")
+        return TYPE_NONE
+
+    fun _check_binary(h: i32) i32
+        val op: i32    = _nodes.d0(h)
+        val lt: i32    = _check_expr(_nodes.d1(h))
+        val rt: i32    = _check_expr(_nodes.d2(h))
+        val is_cmp: bool = op == i32(TokenKind.EQEQ) || op == i32(TokenKind.NEQ) || op == i32(TokenKind.LT) || op == i32(TokenKind.LE) || op == i32(TokenKind.GT) || op == i32(TokenKind.GE)
+        val is_logic: bool = op == i32(TokenKind.AND_AND) || op == i32(TokenKind.OR_OR)
+        if is_logic
+            return TYPE_BOOL
+        if is_cmp
+            return TYPE_BOOL
+        return lt
+
+    fun _check_unary(h: i32) i32
+        val op: i32 = _nodes.d0(h)
+        val t: i32  = _check_expr(_nodes.d1(h))
+        if op == i32(TokenKind.BANG)
+            return TYPE_BOOL
+        return t
+
+    fun _check_call(h: i32) i32
+        val name_si: i32   = _nodes.d0(h)
+        val args_start: i32 = _nodes.d1(h)
+        val args_count: i32 = _nodes.d2(h)
+        var j: i32 = 0
+        while j < args_count
+            _check_expr(_nodes.child_get(args_start + j))
+            j++
+        val name: u8[] = _scan.str_get(name_si)
+        val gi: i32 = _syms.lookup_global(name)
+        if gi < 0
+            _error("undefined function")
+            return TYPE_NONE
+        val gkind: i32 = _syms.global_kind(gi)
+        if gkind != i32(SymbolKind.FUN)
+            _error("not a function")
+            return TYPE_NONE
+        return _syms.global_type(gi)
+
+    fun _check_index(h: i32) i32
+        val base_type: i32 = _check_expr(_nodes.d0(h))
+        _check_expr(_nodes.d1(h))
+        if base_type >= TYPE_SLICE_BASE
+            return base_type - TYPE_SLICE_BASE
+        if base_type >= TYPE_ARRAY_BASE
+            return base_type - TYPE_ARRAY_BASE
+        return TYPE_NONE
+
+    fun _check_field(h: i32) i32
+        val base_h: i32    = _nodes.d0(h)
+        val field_si: i32  = _nodes.d1(h)
+        val base_k: i32    = _nodes.kind(base_h)
+        // Enum variant: Base.VARIANT where Base is an enum type name
+        if base_k == i32(ExprKind.IDENT)
+            val bsi: i32   = _nodes.d0(base_h)
+            val bname: u8[] = _scan.str_get(bsi)
+            val bgi: i32   = _syms.lookup_global(bname)
+            if bgi >= 0 && _syms.global_kind(bgi) == i32(SymbolKind.ENUM_TYPE)
+                _set_expr_type(base_h, _syms.global_type(bgi))
+                return TYPE_INT
+        val bt: i32 = _check_expr(base_h)
+        // .len on slice
+        val field_name: u8[] = _scan.str_get(field_si)
+        if equals(field_name, "len")
+            return TYPE_INT
+        // field on data struct (through reference)
+        var struct_tid: i32 = bt
+        if bt >= TYPE_REF_BASE && bt < TYPE_ARRAY_BASE
+            struct_tid = bt - TYPE_REF_BASE
+        if struct_tid >= 4 && _types.category(struct_tid) == i32(TypeCategory.DATA)
+            val fi: i32 = _types.find_field(struct_tid, field_si)
+            if fi >= 0
+                return _types.field_type(struct_tid, fi)
+        return TYPE_NONE
+#end

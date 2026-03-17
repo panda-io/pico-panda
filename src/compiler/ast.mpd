@@ -1,0 +1,233 @@
+// ── ast.mpd ───────────────────────────────────────────────────────────────────
+// AST node pool for the Pico-Panda compiler.
+//
+// Every node (expression, statement, declaration) is stored in a flat NodePool.
+// A node handle is an i32 index; -1 = null / absent.
+//
+// Each node has kind + 4 integer data slots (d0..d3).
+// The meaning of each slot depends on kind — see comments per ExprKind/StmtKind.
+//
+// Child lists (args, arms, block-body, params, fields, variants) are stored
+// as contiguous ranges in a shared _children: HeapList<i32>.  A node that owns
+// a list stores [start, count] in two of its d-slots.
+//
+// String values (identifiers, string literals) are interned by the Scanner and
+// referenced by their string-pool index stored in a d-slot.
+
+#if HOSTED
+import memory::HeapAllocator
+import collection::HeapList
+
+// ── Node kinds ────────────────────────────────────────────────────────────────
+
+enum ExprKind
+    LIT_INT     = 0   // d0=value
+    LIT_FIXED   = 1   // d0=raw fixed value
+    LIT_STR     = 2   // d0=string index
+    LIT_BOOL    = 3   // d0=0/1
+    IDENT       = 4   // d0=string index
+    BINARY      = 5   // d0=op(TokenKind), d1=left, d2=right
+    UNARY       = 6   // d0=op(TokenKind), d1=expr
+    CALL        = 7   // d0=name(str idx), d1=args_start, d2=args_count
+    INDEX       = 8   // d0=base, d1=index_expr
+    FIELD       = 9   // d0=base, d1=field_name(str idx)
+    CAST        = 10  // d0=type_id, d1=expr
+    REF         = 11  // d0=expr  (&expr — take address)
+    SLICE_LIT   = 12  // d0=addr_expr, d1=len_expr  ({&buf, n})
+    SLICE_LEN   = 13  // d0=base   (base.len — high 16 bits)
+
+enum StmtKind
+    BLOCK       = 0   // d0=stmts_start, d1=stmts_count
+    VAR_DECL    = 1   // d0=name(str), d1=type_id, d2=init(-1 none), d3=is_val(0/1)
+    ASSIGN      = 2   // d0=lhs, d1=rhs, d2=op(TokenKind  EQ/PLUS_EQ etc.)
+    IF          = 3   // d0=cond, d1=then_stmt, d2=else_stmt(-1 none)
+    WHILE       = 4   // d0=cond, d1=body
+    FOR_RANGE   = 5   // d0=var(str), d1=lo, d2=hi, d3=body
+    FOR_IN      = 6   // d0=var(str), d1=iter, d2=body, d3=idx_var(str,-1 none)
+    MATCH       = 7   // d0=expr, d1=arms_start, d2=arms_count
+    MATCH_ARM   = 8   // d0=pattern(-1=wildcard), d1=body
+    RETURN      = 9   // d0=expr(-1 none)
+    BREAK       = 10
+    CONTINUE    = 11
+    EXPR_STMT   = 12  // d0=expr
+    CONST_DECL  = 13  // d0=name(str), d1=type_id, d2=init
+
+enum DeclKind
+    FUN         = 0   // d0=name(str), d1=params_start, d2=params_count, d3=body; ret_type in extra slot
+    DATA        = 1   // d0=name(str), d1=fields_start, d2=fields_count
+    ENUM_DECL   = 2   // d0=name(str), d1=variants_start, d2=variants_count
+    GLOBAL_VAR  = 3   // d0=name(str), d1=type_id, d2=init(-1 none), d3=is_val
+
+// ── Type IDs ─────────────────────────────────────────────────────────────────
+// Primitive types use fixed IDs. Data/enum types use IDs assigned at parse time.
+
+const TYPE_NONE:  i32 = -1   // absent / void
+const TYPE_INT:   i32 = 0
+const TYPE_FIXED: i32 = 1
+const TYPE_BOOL:  i32 = 2
+const TYPE_BYTE:  i32 = 3
+// IDs 4+ are data/enum type IDs allocated in the TypeTable.
+// Reference: TYPE_REF_BASE + inner_type_id  (see types.mpd for encoding)
+const TYPE_REF_BASE:   i32 = 1000
+const TYPE_ARRAY_BASE: i32 = 2000   // TYPE_ARRAY_BASE + elem_type_id
+const TYPE_SLICE_BASE: i32 = 3000   // TYPE_SLICE_BASE + elem_type_id
+
+// ── Node pool ─────────────────────────────────────────────────────────────────
+
+class NodePool()
+    var _heap:      &HeapAllocator
+    var _kinds:     HeapList<i32>
+    var _d0:        HeapList<i32>
+    var _d1:        HeapList<i32>
+    var _d2:        HeapList<i32>
+    var _d3:        HeapList<i32>
+    // Shared child list — stores child node handles as contiguous ranges.
+    var _children:  HeapList<i32>
+
+    fun init(heap: &HeapAllocator)
+        _heap = heap
+        _kinds.init(heap)
+        _d0.init(heap)
+        _d1.init(heap)
+        _d2.init(heap)
+        _d3.init(heap)
+        _children.init(heap)
+
+    // Allocate a node; returns its handle.
+    fun alloc(kind: i32, d0: i32, d1: i32, d2: i32, d3: i32) i32
+        val h: i32 = i32(_kinds.size())
+        _kinds.push(kind)
+        _d0.push(d0)
+        _d1.push(d1)
+        _d2.push(d2)
+        _d3.push(d3)
+        return h
+
+    @inline
+    fun kind(h: i32) i32
+        return _kinds.get(u32(h))
+
+    @inline
+    fun d0(h: i32) i32
+        return _d0.get(u32(h))
+
+    @inline
+    fun d1(h: i32) i32
+        return _d1.get(u32(h))
+
+    @inline
+    fun d2(h: i32) i32
+        return _d2.get(u32(h))
+
+    @inline
+    fun d3(h: i32) i32
+        return _d3.get(u32(h))
+
+    @inline
+    fun set_d1(h: i32, v: i32)
+        _d1.set(u32(h), v)
+
+    @inline
+    fun set_d2(h: i32, v: i32)
+        _d2.set(u32(h), v)
+
+    // Append a child handle to the shared list; returns its position.
+    fun child_append(child: i32) i32
+        val pos: i32 = i32(_children.size())
+        _children.push(child)
+        return pos
+
+    @inline
+    fun child_get(pos: i32) i32
+        return _children.get(u32(pos))
+
+    @inline
+    fun children_size() i32
+        return i32(_children.size())
+
+    // Convenience: alloc expression nodes
+    fun expr_lit_int(v: i32) i32
+        return alloc(i32(ExprKind.LIT_INT), v, 0, 0, 0)
+
+    fun expr_lit_fixed(v: i32) i32
+        return alloc(i32(ExprKind.LIT_FIXED), v, 0, 0, 0)
+
+    fun expr_lit_str(si: i32) i32
+        return alloc(i32(ExprKind.LIT_STR), si, 0, 0, 0)
+
+    fun expr_lit_bool(v: i32) i32
+        return alloc(i32(ExprKind.LIT_BOOL), v, 0, 0, 0)
+
+    fun expr_ident(si: i32) i32
+        return alloc(i32(ExprKind.IDENT), si, 0, 0, 0)
+
+    fun expr_binary(op: i32, left: i32, right: i32) i32
+        return alloc(i32(ExprKind.BINARY), op, left, right, 0)
+
+    fun expr_unary(op: i32, e: i32) i32
+        return alloc(i32(ExprKind.UNARY), op, e, 0, 0)
+
+    fun expr_call(name_si: i32, args_start: i32, args_count: i32) i32
+        return alloc(i32(ExprKind.CALL), name_si, args_start, args_count, 0)
+
+    fun expr_index(base: i32, idx: i32) i32
+        return alloc(i32(ExprKind.INDEX), base, idx, 0, 0)
+
+    fun expr_field(base: i32, field_si: i32) i32
+        return alloc(i32(ExprKind.FIELD), base, field_si, 0, 0)
+
+    fun expr_cast(type_id: i32, e: i32) i32
+        return alloc(i32(ExprKind.CAST), type_id, e, 0, 0)
+
+    fun expr_ref(e: i32) i32
+        return alloc(i32(ExprKind.REF), e, 0, 0, 0)
+
+    fun expr_slice_lit(addr_e: i32, len_e: i32) i32
+        return alloc(i32(ExprKind.SLICE_LIT), addr_e, len_e, 0, 0)
+
+    fun expr_slice_len(base: i32) i32
+        return alloc(i32(ExprKind.SLICE_LEN), base, 0, 0, 0)
+
+    // Convenience: alloc statement nodes
+    fun stmt_block(stmts_start: i32, stmts_count: i32) i32
+        return alloc(i32(StmtKind.BLOCK), stmts_start, stmts_count, 0, 0)
+
+    fun stmt_var(name: i32, type_id: i32, init: i32, is_val: i32) i32
+        return alloc(i32(StmtKind.VAR_DECL), name, type_id, init, is_val)
+
+    fun stmt_assign(lhs: i32, rhs: i32, op: i32) i32
+        return alloc(i32(StmtKind.ASSIGN), lhs, rhs, op, 0)
+
+    fun stmt_if(cond: i32, then_s: i32, else_s: i32) i32
+        return alloc(i32(StmtKind.IF), cond, then_s, else_s, 0)
+
+    fun stmt_while(cond: i32, body: i32) i32
+        return alloc(i32(StmtKind.WHILE), cond, body, 0, 0)
+
+    fun stmt_for_range(var_si: i32, lo: i32, hi: i32, body: i32) i32
+        return alloc(i32(StmtKind.FOR_RANGE), var_si, lo, hi, body)
+
+    fun stmt_for_in(var_si: i32, iter: i32, body: i32, idx_si: i32) i32
+        return alloc(i32(StmtKind.FOR_IN), var_si, iter, body, idx_si)
+
+    fun stmt_match(expr: i32, arms_start: i32, arms_count: i32) i32
+        return alloc(i32(StmtKind.MATCH), expr, arms_start, arms_count, 0)
+
+    fun stmt_match_arm(pattern: i32, body: i32) i32
+        return alloc(i32(StmtKind.MATCH_ARM), pattern, body, 0, 0)
+
+    fun stmt_return(e: i32) i32
+        return alloc(i32(StmtKind.RETURN), e, 0, 0, 0)
+
+    fun stmt_break() i32
+        return alloc(i32(StmtKind.BREAK), 0, 0, 0, 0)
+
+    fun stmt_continue() i32
+        return alloc(i32(StmtKind.CONTINUE), 0, 0, 0, 0)
+
+    fun stmt_expr(e: i32) i32
+        return alloc(i32(StmtKind.EXPR_STMT), e, 0, 0, 0)
+
+    fun stmt_const(name: i32, type_id: i32, init: i32) i32
+        return alloc(i32(StmtKind.CONST_DECL), name, type_id, init, 0)
+#end

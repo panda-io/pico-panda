@@ -1,0 +1,163 @@
+// ── types.mpd ─────────────────────────────────────────────────────────────────
+// Type table for the Pico-Panda compiler.
+//
+// Primitive types (int/fixed/bool/byte) have fixed IDs 0..3.
+// Named types (data / enum) are registered by name and get IDs starting at 4.
+// Composite types (references, arrays, slices) are encoded as:
+//   &T         → TYPE_REF_BASE   + inner_type_id
+//   T[N]       → TYPE_ARRAY_BASE + inner_type_id  (dim stored separately)
+//   T[]        → TYPE_SLICE_BASE + inner_type_id
+
+#if HOSTED
+import memory::HeapAllocator
+import collection::HeapList
+import collection::HeapMap
+import compiler.ast::*
+
+enum TypeCategory
+    PRIM        = 0   // int / fixed / bool / byte
+    DATA        = 1   // data struct
+    ENUM        = 2   // simple i32 enum
+
+// ── Named type entry ──────────────────────────────────────────────────────────
+// For data types: _type_fields / _type_field_count give the field list.
+// For enum types: _type_fields / _type_field_count give the variant list.
+// Fields and variants are stored as contiguous runs in _field_names / _field_types.
+
+class TypeTable()
+    var _heap:             &HeapAllocator
+    var _name_to_id:       HeapMap<i32>     // type name → type ID (4+)
+    var _categories:       HeapList<i32>    // TypeCategory per named type (index = id-4)
+    var _field_start:      HeapList<i32>    // start in _field_names/types per named type
+    var _field_count:      HeapList<i32>
+    var _field_names:      HeapList<i32>    // string indices (from Scanner)
+    var _field_types:      HeapList<i32>    // type IDs per field
+    var _field_values:     HeapList<i32>    // for enum variants: explicit value (-1 = auto)
+    var _next_id:          i32 = 4          // first named type ID
+
+    fun init(heap: &HeapAllocator)
+        _heap = heap
+        _name_to_id.init(heap)
+        _categories.init(heap)
+        _field_start.init(heap)
+        _field_count.init(heap)
+        _field_names.init(heap)
+        _field_types.init(heap)
+        _field_values.init(heap)
+
+    fun contains(name: u8[]) bool
+        return _name_to_id.contains(name)
+
+    fun lookup(name: u8[]) i32
+        if _name_to_id.contains(name)
+            return _name_to_id.get(name)
+        return TYPE_NONE
+
+    // Register a new named type. Returns its ID.
+    fun register(name: u8[], cat: i32) i32
+        val id: i32 = _next_id++
+        _name_to_id.set(name, id)
+        _categories.push(cat)
+        _field_start.push(i32(_field_names.size()))
+        _field_count.push(0)
+        return id
+
+    fun set_field_type(type_id: i32, fi: i32, t: i32)
+        val start: i32 = _field_start.get(u32(type_id - 4))
+        _field_types.set(u32(start + fi), t)
+
+    fun add_field(type_id: i32, field_name_si: i32, field_type: i32)
+        val idx: i32 = type_id - 4
+        _field_names.push(field_name_si)
+        _field_types.push(field_type)
+        _field_values.push(-1)
+        _field_count.set(u32(idx), _field_count.get(u32(idx)) + 1)
+
+    fun add_variant(type_id: i32, variant_name_si: i32, value: i32)
+        val idx: i32 = type_id - 4
+        _field_names.push(variant_name_si)
+        _field_types.push(TYPE_INT)
+        _field_values.push(value)
+        _field_count.set(u32(idx), _field_count.get(u32(idx)) + 1)
+
+    fun category(type_id: i32) i32
+        if type_id < 4
+            return i32(TypeCategory.PRIM)
+        val idx: i32 = type_id - 4
+        return _categories.get(u32(idx))
+
+    fun field_count(type_id: i32) i32
+        if type_id < 4
+            return 0
+        return _field_count.get(u32(type_id - 4))
+
+    fun field_name_si(type_id: i32, fi: i32) i32
+        val start: i32 = _field_start.get(u32(type_id - 4))
+        return _field_names.get(u32(start + fi))
+
+    fun field_type(type_id: i32, fi: i32) i32
+        val start: i32 = _field_start.get(u32(type_id - 4))
+        return _field_types.get(u32(start + fi))
+
+    fun field_offset(type_id: i32, fi: i32) i32
+        return fi * 4   // all fields are 4-byte aligned in VM data segment
+
+    fun variant_value(type_id: i32, vi: i32) i32
+        val start: i32 = _field_start.get(u32(type_id - 4))
+        val stored: i32 = _field_values.get(u32(start + vi))
+        if stored >= 0
+            return stored
+        return vi   // auto-increment from 0
+
+    // Find field index by name string index. Returns -1 if not found.
+    fun find_field(type_id: i32, name_si: i32) i32
+        if type_id < 4
+            return -1
+        val start: i32 = _field_start.get(u32(type_id - 4))
+        val count: i32 = _field_count.get(u32(type_id - 4))
+        var i: i32 = 0
+        while i < count
+            if _field_names.get(u32(start + i)) == name_si
+                return i
+            i++
+        return -1
+
+    // Helpers for composite type IDs
+    @inline
+    fun ref_of(inner: i32) i32
+        return TYPE_REF_BASE + inner
+
+    @inline
+    fun array_of(elem: i32) i32
+        return TYPE_ARRAY_BASE + elem
+
+    @inline
+    fun slice_of(elem: i32) i32
+        return TYPE_SLICE_BASE + elem
+
+    @inline
+    fun is_ref(type_id: i32) bool
+        return type_id >= TYPE_REF_BASE && type_id < TYPE_ARRAY_BASE
+
+    @inline
+    fun is_array(type_id: i32) bool
+        return type_id >= TYPE_ARRAY_BASE && type_id < TYPE_SLICE_BASE
+
+    @inline
+    fun is_slice(type_id: i32) bool
+        return type_id >= TYPE_SLICE_BASE && type_id < TYPE_SLICE_BASE + 1000
+
+    @inline
+    fun inner_type(type_id: i32) i32
+        if type_id >= TYPE_SLICE_BASE
+            return type_id - TYPE_SLICE_BASE
+        if type_id >= TYPE_ARRAY_BASE
+            return type_id - TYPE_ARRAY_BASE
+        return type_id - TYPE_REF_BASE
+
+    // Size of one element in the data segment (bytes)
+    fun elem_size(type_id: i32) i32
+        if type_id == TYPE_BYTE
+            return 1
+        return 4
+#end

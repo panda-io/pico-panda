@@ -1,0 +1,193 @@
+// ── compiler_test.mpd ─────────────────────────────────────────────────────────
+// Smoke tests for the Pico-Panda compiler front-end and end-to-end pipeline.
+
+#if HOSTED
+import test::assert
+import memory::HeapAllocator
+import compiler.compiler::*
+import compiler.scanner::Scanner
+import compiler.parser::Parser
+import compiler.ast::*
+import assembler.assembler::Assembler
+import vm.vm::vm_reset
+import vm.vm::vm_load_sys
+import vm.vm::vm_boot_sys
+import console
+import string::equals
+
+// ── Output capture ────────────────────────────────────────────────────────────
+
+var _out_buf: u8[256]
+var _out_len: i32 = 0
+
+fun _cap(b: u8)
+    if _out_len < 256
+        _out_buf[_out_len] = b
+        _out_len++
+
+fun _out() u8[]
+    return {&_out_buf[0], u32(_out_len)}
+
+@include("stdio.h")
+
+@extern("putchar({b})")
+fun _putchar(b: u8)
+
+fun _stdout_write(b: u8)
+    _putchar(b)
+
+// ── Scanner tests ─────────────────────────────────────────────────────────────
+
+@test
+fun test_scan_empty()
+    var heap: HeapAllocator
+    var sc: Scanner
+    sc.init(&heap, "")
+    assert(sc.scan())
+    assert(sc.token_count() == 1)   // only EOF
+
+@test
+fun test_scan_var_decl()
+    var heap: HeapAllocator
+    var sc: Scanner
+    sc.init(&heap, "var x: int\n")
+    assert(sc.scan())
+    assert(sc.error_count() == 0)
+
+@test
+fun test_scan_fun_decl()
+    var heap: HeapAllocator
+    var sc: Scanner
+    sc.init(&heap, "fun add(a: int, b: int) int\n    return a + b\n")
+    assert(sc.scan())
+    assert(sc.error_count() == 0)
+
+@test
+fun test_scan_string_intern()
+    var heap: HeapAllocator
+    var sc: Scanner
+    sc.init(&heap, "var abc: int\nvar abc: int\n")
+    assert(sc.scan())
+    // IDENT "abc" appears twice — should get the same string index
+    val si1: i32 = sc.tok_val(1)   // tokens: VAR IDENT COLON INT NEWLINE ...
+    val si2: i32 = sc.tok_val(6)   // second VAR IDENT...
+    assert(si1 == si2)
+
+// ── Parser tests ──────────────────────────────────────────────────────────────
+
+@test
+fun test_parse_empty()
+    var heap: HeapAllocator
+    var sc: Scanner
+    sc.init(&heap, "")
+    sc.scan()
+    var p: Parser
+    p.init(&heap, &sc)
+    assert(p.parse())
+    assert(p.decls().count() == 0)
+
+@test
+fun test_parse_global_var()
+    var heap: HeapAllocator
+    var sc: Scanner
+    sc.init(&heap, "var x: int\n")
+    sc.scan()
+    var p: Parser
+    p.init(&heap, &sc)
+    assert(p.parse())
+    assert(p.decls().count() == 1)
+
+@test
+fun test_parse_fun()
+    var heap: HeapAllocator
+    var sc: Scanner
+    sc.init(&heap, "fun add(a: int, b: int) int\n    return a + b\n")
+    sc.scan()
+    var p: Parser
+    p.init(&heap, &sc)
+    assert(p.parse())
+    assert(p.decls().count() == 1)
+    assert(p.decls().kind(0) == i32(DeclKind.FUN))
+
+// ── Compiler smoke tests ──────────────────────────────────────────────────────
+
+@test
+fun test_compile_empty()
+    assert(pp_compile(""))
+
+@test
+fun test_compile_var()
+    assert(pp_compile("var x: int\n"))
+
+@test
+fun test_compile_fun()
+    assert(pp_compile("fun add(a: int, b: int) int\n    return a + b\n"))
+
+@test
+fun test_compile_if()
+    assert(pp_compile("fun f(a: int) int\n    if a > 0\n        return a\n    return 0\n"))
+
+@test
+fun test_compile_while()
+    assert(pp_compile("fun f()\n    var x: int = 0\n    while x < 10\n        x = x + 1\n"))
+
+@test
+fun test_compile_for_range()
+    assert(pp_compile("fun f()\n    var r: int = 0\n    for i in 0..10\n        r = r + 1\n"))
+
+// ── Checker error tests ───────────────────────────────────────────────────────
+
+@test
+fun test_checker_undefined_ident()
+    assert(!pp_compile("fun f() int\n    return x\n"))
+
+@test
+fun test_checker_break_outside_loop()
+    assert(!pp_compile("fun f()\n    break\n"))
+
+// ── End-to-end test ───────────────────────────────────────────────────────────
+
+@test
+fun test_e2e_add()
+    // Compile add(a, b) int; prepend a main wrapper; assemble; run via VM.
+    var c: Compiler
+    assert(c.compile("fun add(a: int, b: int) int\n    return a + b\n"))
+    val fn_asm: u8[] = c.asm_output()
+
+    // main: push 3, push 4, call add, print result, exit
+    val header: u8[] = ".code\nfun main:\n    PUSH 3\n    PUSH 4\n    CALL add\n    CALL_MODULE CONSOLE PRINT_INT\n    CALL_MODULE SIGNAL EXIT_HANDLER\n    RET\n"
+
+    // concatenate header + fn_asm into a fixed buffer
+    var combined: u8[2048]
+    var pos: i32 = 0
+    var i: i32 = 0
+    val hlen: i32 = i32(header.size())
+    while i < hlen
+        combined[pos] = header[i]
+        pos++
+        i++
+    i = 0
+    val flen: i32 = i32(fn_asm.size())
+    while i < flen
+        combined[pos] = fn_asm[i]
+        pos++
+        i++
+
+    // assemble
+    var asmblr: Assembler
+    asmblr.init()
+    val src: u8[] = {&combined[0], u32(pos)}
+    assert(asmblr.pass1_str(src))
+    asmblr.reset_pc()
+    assert(asmblr.pass2_str(src))
+    val bc: u8[] = asmblr.get_bytecode()
+
+    // run via VM, capture output
+    _out_len = 0
+    console.init(_cap)
+    vm_reset()
+    vm_load_sys(bc)
+    vm_boot_sys()
+    console.init(_stdout_write)
+    assert(equals(_out(), "7"))
+#end

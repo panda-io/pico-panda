@@ -57,6 +57,35 @@ See [References](#references).
 
 ---
 
+## Enums
+
+Simple integer enums. Values start at `0` and increment by 1. No data variants.
+
+```pico-panda
+enum Direction
+    UP
+    DOWN
+    LEFT
+    RIGHT
+
+enum State
+    IDLE    = 0
+    RUNNING = 1
+    DEAD    = 2
+```
+
+Use as typed integer constants:
+
+```pico-panda
+var dir: Direction = Direction.UP
+var s: State = State.IDLE
+```
+
+Explicit values are optional. All comparisons use integer ops — `dir == Direction.LEFT`.
+Enums work as `match` discriminants (see [Control Flow](#control-flow)).
+
+---
+
 ## Arrays
 
 ### Fixed arrays
@@ -276,6 +305,8 @@ See `signal.md` for the full signal system.
 
 ## Control Flow
 
+### if / else
+
 ```pico-panda
 if x > 0
     do_something()
@@ -284,15 +315,67 @@ if x > 0
     do_something()
 else
     do_other()
-
-while active
-    update()
-
-for i in range(0, 10)
-    process(i)
 ```
 
-`break` and `continue` work inside loops.
+### while
+
+```pico-panda
+while active
+    update()
+```
+
+### for — range
+
+Half-open range `lo..hi` (lo inclusive, hi exclusive):
+
+```pico-panda
+for i in 0..10
+    process(i)
+
+for i in 0..buf.len
+    buf[i] = 0
+```
+
+### for — collection
+
+Iterate over a fixed array or slice. Optionally capture the index:
+
+```pico-panda
+for item in nums
+    total = total + item
+
+for i, item in nums
+    buf[i] = item * 2
+```
+
+`break` and `continue` work inside all loop forms.
+
+### match
+
+Exhaustive match on an integer, `bool`, or `enum` value.
+Each arm is a single expression or an indented block.
+`_` is the wildcard (default) arm — required if not all values are covered.
+
+```pico-panda
+match dir
+    Direction.UP    → move_up()
+    Direction.DOWN  → move_down()
+    Direction.LEFT  → move_left()
+    Direction.RIGHT → move_right()
+
+match lives
+    0 → game_over()
+    _ → continue_game()
+
+match state
+    State.IDLE →
+        score = 0
+        lives = 3
+    State.RUNNING → update()
+    _ → {}
+```
+
+Only one arm fires. Arms are checked top-to-bottom; the first match wins.
 
 ---
 
@@ -351,6 +434,7 @@ val b: byte  = byte(flags)      // int → byte (low 8 bits)
 | Feature | Reason |
 | :--- | :--- |
 | `class` with methods | Signals + standalone functions are sufficient; methods complicate signal dispatch |
+| Tagged enums (Rust-style) | No heap; `data` + discriminant field achieves the same goal with flat layout |
 | Nested `data` | Prevents implicit copies; keeps layouts flat |
 | Pass-by-value for `data` | No accidental copies on MCU |
 | `data[]` arrays | No heap; field-offset math not in VM v1 |

@@ -1,0 +1,672 @@
+// ── codegen.mpd ───────────────────────────────────────────────────────────────
+// PPasm text code generator for the Pico-Panda compiler.
+//
+// Walks the type-checked AST and emits PPasm assembly text into an in-memory
+// buffer.  The output can be passed to Assembler.pass1_str / pass2_str.
+//
+// Multi-file design: call gen() once after all declarations have been collected
+// into the shared NodePool / DeclList.
+
+#if HOSTED
+import memory::HeapAllocator
+import collection::HeapList
+import collection::HeapMap
+import compiler.scanner::Scanner
+import compiler.ast::*
+import compiler.token::TokenKind
+import compiler.types::*
+import compiler.checker::Checker
+import compiler.parser::DeclList
+import string::*
+import console::*
+
+class Codegen()
+    var _heap:  &HeapAllocator
+    var _scan:  &Scanner
+    var _nodes: &NodePool
+    var _decls: &DeclList
+    var _types: &TypeTable
+    var _chk:   &Checker
+
+    var _errors:  i32 = 0
+    var _label_n: i32 = 0
+
+    // Dynamic output buffer (heap-allocated, grows as needed)
+    var _out:     u8[]
+    var _out_pos: i32 = 0
+    var _out_cap: i32 = 0
+
+    // Current-function local names (set = local, 0 = absent)
+    var _cur_locals: HeapMap<i32>
+
+    // Break / continue label stacks (label index pushed per loop)
+    var _break_lbl: HeapList<i32>
+    var _cont_lbl:  HeapList<i32>
+
+    fun init(heap: &HeapAllocator, scan: &Scanner, nodes: &NodePool, decls: &DeclList, types: &TypeTable, chk: &Checker)
+        _heap  = heap
+        _scan  = scan
+        _nodes = nodes
+        _decls = decls
+        _types = types
+        _chk   = chk
+        _out     = heap.allocate_array<u8>(u32(4096))
+        _out_cap = 4096
+        _out_pos = 0
+        _label_n = 0
+        _errors  = 0
+        _cur_locals.init(heap)
+        _break_lbl.init(heap)
+        _cont_lbl.init(heap)
+
+    fun gen() bool
+        _errors = 0
+        _gen_data()
+        _gen_code()
+        return _errors == 0
+
+    fun error_count() i32
+        return _errors
+
+    fun output() u8[]
+        return {&_out[0], u32(_out_pos)}
+
+    // ── Output buffer helpers ─────────────────────────────────────────────────
+
+    fun _ensure_cap(need: i32)
+        if _out_pos + need <= _out_cap
+            return
+        var new_cap: i32 = _out_cap * 2
+        if new_cap < _out_pos + need
+            new_cap = _out_pos + need + 1024
+        _out = _heap.realloc_array<u8>(_out, u32(new_cap))
+        _out_cap = new_cap
+
+    fun _put(b: u8)
+        _ensure_cap(1)
+        _out[_out_pos] = b
+        _out_pos++
+
+    fun _put_str(s: u8[])
+        var i: u32 = 0
+        while i < s.size()
+            _put(s[i])
+            i++
+
+    fun _put_u32(v: u32)
+        if v >= u32(10)
+            _put_u32(v / u32(10))
+        _put(u8(48 + i32(v % u32(10))))
+
+    fun _put_int(v: i32)
+        if v < 0
+            _put(u8(45))
+            _put_u32(u32(-v))
+        else
+            _put_u32(u32(v))
+
+    // ── Label helpers ─────────────────────────────────────────────────────────
+
+    fun _new_label() i32
+        val n: i32 = _label_n
+        _label_n++
+        return n
+
+    fun _put_label_def(n: i32)
+        _put_str("_L")
+        _put_int(n)
+        _put_str(":\n")
+
+    fun _put_label_ref(n: i32)
+        _put_str("_L")
+        _put_int(n)
+
+    // ── Type helpers ──────────────────────────────────────────────────────────
+
+    fun _type_str(t: i32) u8[]
+        if t == TYPE_INT
+            return "i32"
+        if t == TYPE_FIXED
+            return "fixed"
+        if t == TYPE_BOOL
+            return "bool"
+        if t == TYPE_BYTE
+            return "u8"
+        return "i32"
+
+    // Reverse lookup: type_id → struct name (by scanning decls)
+    fun _struct_name(type_id: i32) u8[]
+        var i: i32 = 0
+        while i < _decls.count()
+            if _decls.kind(i) == i32(DeclKind.DATA)
+                val nsi: i32 = _decls.d0(i)
+                val name: u8[] = _scan.str_get(nsi)
+                if _types.lookup(name) == type_id
+                    return name
+            i++
+        return "unknown"
+
+    // ── Data section ──────────────────────────────────────────────────────────
+
+    fun _gen_data()
+        _put_str(".data\n")
+        var i: i32 = 0
+        while i < _decls.count()
+            if _decls.kind(i) == i32(DeclKind.DATA)
+                _gen_struct_def(i)
+            i++
+        i = 0
+        while i < _decls.count()
+            if _decls.kind(i) == i32(DeclKind.GLOBAL_VAR)
+                _gen_global_decl(i)
+            i++
+
+    fun _gen_struct_def(di: i32)
+        val nsi: i32 = _decls.d0(di)
+        val name: u8[] = _scan.str_get(nsi)
+        val tid: i32   = _types.lookup(name)
+        _put_str(".struct ")
+        _put_str(name)
+        _put_str("\n")
+        val fc: i32 = _types.field_count(tid)
+        var j: i32 = 0
+        while j < fc
+            _put_str("    .field ")
+            _put_str(_scan.str_get(_types.field_name_si(tid, j)))
+            _put_str("\n")
+            j++
+        _put_str(".end\n")
+
+    fun _gen_global_decl(di: i32)
+        val nsi:    i32 = _decls.d0(di)
+        val name:   u8[] = _scan.str_get(nsi)
+        val type_id: i32 = _decls.d1(di)
+        val dim:    i32 = _decls.ret(di)   // array dim stored in ret slot
+        _put_str(".global ")
+        _put_str(name)
+        _put_str(": ")
+        if type_id >= TYPE_ARRAY_BASE && type_id < TYPE_SLICE_BASE
+            val elem: i32 = type_id - TYPE_ARRAY_BASE
+            _put_str(_type_str(elem))
+            _put_str("[")
+            _put_int(dim)
+            _put_str("]")
+        else
+            _put_str(_type_str(type_id))
+        _put_str("\n")
+
+    // ── Code section ──────────────────────────────────────────────────────────
+
+    fun _gen_code()
+        _put_str(".code\n")
+        var i: i32 = 0
+        while i < _decls.count()
+            if _decls.kind(i) == i32(DeclKind.FUN)
+                _gen_fun(i)
+            i++
+
+    fun _gen_fun(di: i32)
+        val nsi:   i32 = _decls.d0(di)
+        val ps:    i32 = _decls.d1(di)
+        val pc:    i32 = _decls.d2(di)
+        val body:  i32 = _decls.d3(di)
+        _cur_locals.init(_heap)
+        _put_str("fun ")
+        _put_str(_scan.str_get(nsi))
+        _put_str(":\n")
+        var j: i32 = 0
+        while j < pc
+            val psi: i32   = _nodes.child_get(ps + j * 2)
+            val pname: u8[] = _scan.str_get(psi)
+            _put_str("    .local ")
+            _put_str(pname)
+            _put_str("\n")
+            _cur_locals.set(pname, 1)
+            j++
+        _gen_stmt(body)
+        _put_str("\n")
+
+    // ── Statement generation ──────────────────────────────────────────────────
+
+    fun _gen_stmt(h: i32)
+        if h < 0
+            return
+        val k: i32 = _nodes.kind(h)
+        if k == i32(StmtKind.BLOCK)
+            _gen_block(h)
+        else if k == i32(StmtKind.VAR_DECL)
+            _gen_var_decl(h)
+        else if k == i32(StmtKind.CONST_DECL)
+            _gen_const_decl(h)
+        else if k == i32(StmtKind.ASSIGN)
+            _gen_assign(h)
+        else if k == i32(StmtKind.IF)
+            _gen_if(h)
+        else if k == i32(StmtKind.WHILE)
+            _gen_while(h)
+        else if k == i32(StmtKind.FOR_RANGE)
+            _gen_for_range(h)
+        else if k == i32(StmtKind.RETURN)
+            _gen_return(h)
+        else if k == i32(StmtKind.BREAK)
+            _gen_break()
+        else if k == i32(StmtKind.CONTINUE)
+            _gen_continue()
+        else if k == i32(StmtKind.EXPR_STMT)
+            _gen_expr(_nodes.d0(h))
+            _put_str("    DROP\n")
+
+    fun _gen_block(h: i32)
+        val ss: i32 = _nodes.d0(h)
+        val sc: i32 = _nodes.d1(h)
+        var i: i32 = 0
+        while i < sc
+            _gen_stmt(_nodes.child_get(ss + i))
+            i++
+
+    fun _gen_var_decl(h: i32)
+        val nsi:  i32  = _nodes.d0(h)
+        val init: i32  = _nodes.d2(h)
+        val name: u8[] = _scan.str_get(nsi)
+        _put_str("    .var ")
+        _put_str(name)
+        _put_str("\n")
+        _cur_locals.set(name, 1)
+        if init != -1
+            _gen_expr(init)
+            _put_str("    STORE_LOCAL ")
+            _put_str(name)
+            _put_str("\n")
+
+    fun _gen_const_decl(h: i32)
+        val nsi:  i32  = _nodes.d0(h)
+        val init: i32  = _nodes.d2(h)
+        val name: u8[] = _scan.str_get(nsi)
+        _put_str("    .var ")
+        _put_str(name)
+        _put_str("\n")
+        _cur_locals.set(name, 1)
+        if init != -1
+            _gen_expr(init)
+            _put_str("    STORE_LOCAL ")
+            _put_str(name)
+            _put_str("\n")
+
+    fun _gen_assign(h: i32)
+        val lhs:   i32 = _nodes.d0(h)
+        val rhs:   i32 = _nodes.d1(h)
+        val op:    i32 = _nodes.d2(h)
+        val lhs_k: i32 = _nodes.kind(lhs)
+        if op == i32(TokenKind.EQ)
+            _gen_expr(rhs)
+            if lhs_k == i32(ExprKind.IDENT)
+                _gen_store_ident(_nodes.d0(lhs))
+            else
+                _gen_lvalue_addr(lhs)
+                _put_str("    STORE_GLOBAL_IND\n")
+        else
+            if lhs_k == i32(ExprKind.IDENT)
+                _gen_expr(lhs)
+                _gen_expr(rhs)
+                _gen_compound_op(op, _chk.expr_type(lhs))
+                _gen_store_ident(_nodes.d0(lhs))
+            else
+                _gen_lvalue_addr(lhs)
+                _put_str("    DUP\n")
+                _put_str("    LOAD_GLOBAL_IND\n")
+                _gen_expr(rhs)
+                _gen_compound_op(op, _chk.expr_type(lhs))
+                _put_str("    SWAP\n")
+                _put_str("    STORE_GLOBAL_IND\n")
+
+    fun _gen_compound_op(op: i32, t: i32)
+        val is_fixed: bool = t == TYPE_FIXED
+        if op == i32(TokenKind.PLUS_EQ)
+            if is_fixed
+                _put_str("    ADD_FIXED\n")
+            else
+                _put_str("    ADD_INT\n")
+        else if op == i32(TokenKind.MINUS_EQ)
+            if is_fixed
+                _put_str("    SUB_FIXED\n")
+            else
+                _put_str("    SUB_INT\n")
+        else if op == i32(TokenKind.STAR_EQ)
+            if is_fixed
+                _put_str("    MUL_FIXED\n")
+            else
+                _put_str("    MUL_INT\n")
+        else if op == i32(TokenKind.SLASH_EQ)
+            if is_fixed
+                _put_str("    DIV_FIXED\n")
+            else
+                _put_str("    DIV_INT\n")
+        else if op == i32(TokenKind.PERCENT_EQ)
+            _put_str("    MOD_INT\n")
+
+    fun _gen_store_ident(si: i32)
+        val name: u8[] = _scan.str_get(si)
+        if _cur_locals.contains(name)
+            _put_str("    STORE_LOCAL ")
+            _put_str(name)
+            _put_str("\n")
+        else
+            _put_str("    STORE_GLOBAL ")
+            _put_str(name)
+            _put_str("\n")
+
+    fun _gen_lvalue_addr(h: i32)
+        val k: i32 = _nodes.kind(h)
+        if k == i32(ExprKind.IDENT)
+            _put_str("    PUSH_ADDR ")
+            _put_str(_scan.str_get(_nodes.d0(h)))
+            _put_str("\n")
+        else if k == i32(ExprKind.INDEX)
+            _gen_lvalue_addr(_nodes.d0(h))
+            _gen_expr(_nodes.d1(h))
+            _put_str("    PUSH 4\n")
+            _put_str("    MUL_INT\n")
+            _put_str("    ADD_INT\n")
+
+    fun _gen_if(h: i32)
+        val cond:   i32 = _nodes.d0(h)
+        val then_s: i32 = _nodes.d1(h)
+        val else_s: i32 = _nodes.d2(h)
+        val lbl_else: i32 = _new_label()
+        val lbl_end:  i32 = _new_label()
+        _gen_expr(cond)
+        _put_str("    JMP_IF_FALSE ")
+        _put_label_ref(lbl_else)
+        _put_str("\n")
+        _gen_stmt(then_s)
+        _put_str("    JMP ")
+        _put_label_ref(lbl_end)
+        _put_str("\n")
+        _put_label_def(lbl_else)
+        if else_s != -1
+            _gen_stmt(else_s)
+        _put_label_def(lbl_end)
+
+    fun _gen_while(h: i32)
+        val cond: i32 = _nodes.d0(h)
+        val body: i32 = _nodes.d1(h)
+        val lbl_loop: i32 = _new_label()
+        val lbl_end:  i32 = _new_label()
+        _break_lbl.push(lbl_end)
+        _cont_lbl.push(lbl_loop)
+        _put_label_def(lbl_loop)
+        _gen_expr(cond)
+        _put_str("    JMP_IF_FALSE ")
+        _put_label_ref(lbl_end)
+        _put_str("\n")
+        _gen_stmt(body)
+        _put_str("    JMP ")
+        _put_label_ref(lbl_loop)
+        _put_str("\n")
+        _put_label_def(lbl_end)
+        _break_lbl.pop()
+        _cont_lbl.pop()
+
+    fun _gen_for_range(h: i32)
+        val vsi:   i32 = _nodes.d0(h)
+        val lo:    i32 = _nodes.d1(h)
+        val hi:    i32 = _nodes.d2(h)
+        val body:  i32 = _nodes.d3(h)
+        val vname: u8[] = _scan.str_get(vsi)
+        val lbl_loop: i32 = _new_label()
+        val lbl_end:  i32 = _new_label()
+        _put_str("    .var ")
+        _put_str(vname)
+        _put_str("\n")
+        _cur_locals.set(vname, 1)
+        _gen_expr(lo)
+        _put_str("    STORE_LOCAL ")
+        _put_str(vname)
+        _put_str("\n")
+        _break_lbl.push(lbl_end)
+        _cont_lbl.push(lbl_loop)
+        _put_label_def(lbl_loop)
+        _put_str("    LOAD_LOCAL ")
+        _put_str(vname)
+        _put_str("\n")
+        _gen_expr(hi)
+        _put_str("    CMP_LT_INT\n")
+        _put_str("    JMP_IF_FALSE ")
+        _put_label_ref(lbl_end)
+        _put_str("\n")
+        _gen_stmt(body)
+        _put_str("    LOAD_LOCAL ")
+        _put_str(vname)
+        _put_str("\n")
+        _put_str("    PUSH 1\n")
+        _put_str("    ADD_INT\n")
+        _put_str("    STORE_LOCAL ")
+        _put_str(vname)
+        _put_str("\n")
+        _put_str("    JMP ")
+        _put_label_ref(lbl_loop)
+        _put_str("\n")
+        _put_label_def(lbl_end)
+        _break_lbl.pop()
+        _cont_lbl.pop()
+
+    fun _gen_return(h: i32)
+        val e: i32 = _nodes.d0(h)
+        if e != -1
+            _gen_expr(e)
+        _put_str("    RET\n")
+
+    fun _gen_break()
+        if _break_lbl.is_empty()
+            _errors++
+            return
+        val n: i32 = _break_lbl.get(_break_lbl.size() - u32(1))
+        _put_str("    JMP ")
+        _put_label_ref(n)
+        _put_str("\n")
+
+    fun _gen_continue()
+        if _cont_lbl.is_empty()
+            _errors++
+            return
+        val n: i32 = _cont_lbl.get(_cont_lbl.size() - u32(1))
+        _put_str("    JMP ")
+        _put_label_ref(n)
+        _put_str("\n")
+
+    // ── Expression generation ─────────────────────────────────────────────────
+
+    fun _gen_expr(h: i32)
+        if h < 0
+            return
+        val k: i32 = _nodes.kind(h)
+        if k == i32(ExprKind.LIT_INT)
+            _put_str("    PUSH ")
+            _put_int(_nodes.d0(h))
+            _put_str("\n")
+        else if k == i32(ExprKind.LIT_FIXED)
+            _put_str("    PUSH ")
+            _put_int(_nodes.d0(h))
+            _put_str("\n")
+        else if k == i32(ExprKind.LIT_BOOL)
+            if _nodes.d0(h) != 0
+                _put_str("    PUSH 1\n")
+            else
+                _put_str("    PUSH 0\n")
+        else if k == i32(ExprKind.LIT_STR)
+            _put_str("    PUSH_STR \"")
+            _put_str(_scan.str_get(_nodes.d0(h)))
+            _put_str("\"\n")
+        else if k == i32(ExprKind.IDENT)
+            _gen_load_ident(_nodes.d0(h))
+        else if k == i32(ExprKind.BINARY)
+            _gen_binary(h)
+        else if k == i32(ExprKind.UNARY)
+            _gen_unary(h)
+        else if k == i32(ExprKind.CALL)
+            _gen_call(h)
+        else if k == i32(ExprKind.CAST)
+            _gen_cast(h)
+        else if k == i32(ExprKind.INDEX)
+            _gen_lvalue_addr(h)
+            _put_str("    LOAD_GLOBAL_IND\n")
+        else if k == i32(ExprKind.FIELD)
+            _gen_field_expr(h)
+
+    fun _gen_load_ident(si: i32)
+        val name: u8[] = _scan.str_get(si)
+        if _cur_locals.contains(name)
+            _put_str("    LOAD_LOCAL ")
+            _put_str(name)
+            _put_str("\n")
+        else
+            _put_str("    LOAD_GLOBAL ")
+            _put_str(name)
+            _put_str("\n")
+
+    fun _gen_binary(h: i32)
+        val op: i32 = _nodes.d0(h)
+        val lh: i32 = _nodes.d1(h)
+        val rh: i32 = _nodes.d2(h)
+        val lt: i32 = _chk.expr_type(lh)
+        val rt: i32 = _chk.expr_type(rh)
+        val is_fixed: bool = lt == TYPE_FIXED || rt == TYPE_FIXED
+        _gen_expr(lh)
+        _gen_expr(rh)
+        if op == i32(TokenKind.PLUS)
+            if is_fixed
+                _put_str("    ADD_FIXED\n")
+            else
+                _put_str("    ADD_INT\n")
+        else if op == i32(TokenKind.MINUS)
+            if is_fixed
+                _put_str("    SUB_FIXED\n")
+            else
+                _put_str("    SUB_INT\n")
+        else if op == i32(TokenKind.STAR)
+            if is_fixed
+                _put_str("    MUL_FIXED\n")
+            else
+                _put_str("    MUL_INT\n")
+        else if op == i32(TokenKind.SLASH)
+            if is_fixed
+                _put_str("    DIV_FIXED\n")
+            else
+                _put_str("    DIV_INT\n")
+        else if op == i32(TokenKind.PERCENT)
+            _put_str("    MOD_INT\n")
+        else if op == i32(TokenKind.AMP)
+            _put_str("    AND\n")
+        else if op == i32(TokenKind.PIPE)
+            _put_str("    OR\n")
+        else if op == i32(TokenKind.CARET)
+            _put_str("    XOR\n")
+        else if op == i32(TokenKind.LSHIFT)
+            _put_str("    SHL_INT\n")
+        else if op == i32(TokenKind.RSHIFT)
+            _put_str("    SHR_INT\n")
+        else if op == i32(TokenKind.EQEQ)
+            if is_fixed
+                _put_str("    CMP_EQ_FIXED\n")
+            else
+                _put_str("    CMP_EQ_INT\n")
+        else if op == i32(TokenKind.NEQ)
+            if is_fixed
+                _put_str("    CMP_NE_FIXED\n")
+            else
+                _put_str("    CMP_NE_INT\n")
+        else if op == i32(TokenKind.LT)
+            if is_fixed
+                _put_str("    CMP_LT_FIXED\n")
+            else
+                _put_str("    CMP_LT_INT\n")
+        else if op == i32(TokenKind.LE)
+            if is_fixed
+                _put_str("    CMP_LE_FIXED\n")
+            else
+                _put_str("    CMP_LE_INT\n")
+        else if op == i32(TokenKind.GT)
+            if is_fixed
+                _put_str("    CMP_GT_FIXED\n")
+            else
+                _put_str("    CMP_GT_INT\n")
+        else if op == i32(TokenKind.GE)
+            if is_fixed
+                _put_str("    CMP_GE_FIXED\n")
+            else
+                _put_str("    CMP_GE_INT\n")
+        else if op == i32(TokenKind.AND_AND)
+            _put_str("    AND\n")
+        else if op == i32(TokenKind.OR_OR)
+            _put_str("    OR\n")
+
+    fun _gen_unary(h: i32)
+        val op: i32 = _nodes.d0(h)
+        val e:  i32 = _nodes.d1(h)
+        val t:  i32 = _chk.expr_type(e)
+        _gen_expr(e)
+        if op == i32(TokenKind.MINUS)
+            if t == TYPE_FIXED
+                _put_str("    NEG_FIXED\n")
+            else
+                _put_str("    NEG_INT\n")
+        else if op == i32(TokenKind.BANG)
+            _put_str("    NOT\n")
+        else if op == i32(TokenKind.TILDE)
+            _put_str("    PUSH -1\n")
+            _put_str("    XOR\n")
+
+    fun _gen_call(h: i32)
+        val nsi: i32 = _nodes.d0(h)
+        val as_: i32 = _nodes.d1(h)
+        val ac:  i32 = _nodes.d2(h)
+        var j: i32 = 0
+        while j < ac
+            _gen_expr(_nodes.child_get(as_ + j))
+            j++
+        _put_str("    CALL ")
+        _put_str(_scan.str_get(nsi))
+        _put_str("\n")
+
+    fun _gen_cast(h: i32)
+        val to:   i32 = _nodes.d0(h)
+        val e:    i32 = _nodes.d1(h)
+        val from: i32 = _chk.expr_type(e)
+        _gen_expr(e)
+        if from == TYPE_INT && to == TYPE_FIXED
+            _put_str("    INT_TO_FIXED\n")
+        else if from == TYPE_FIXED && to == TYPE_INT
+            _put_str("    FIXED_TO_INT\n")
+
+    fun _gen_field_expr(h: i32)
+        val base: i32 = _nodes.d0(h)
+        val fsi:  i32 = _nodes.d1(h)
+        // Check for enum variant access: Enum.VARIANT
+        if _nodes.kind(base) == i32(ExprKind.IDENT)
+            val bsi:   i32  = _nodes.d0(base)
+            val bname: u8[] = _scan.str_get(bsi)
+            val tid:   i32  = _types.lookup(bname)
+            if tid != TYPE_NONE && _types.category(tid) == i32(TypeCategory.ENUM)
+                val vi: i32 = _types.find_field(tid, fsi)
+                if vi >= 0
+                    _put_str("    PUSH ")
+                    _put_int(_types.variant_value(tid, vi))
+                    _put_str("\n")
+                    return
+        // Struct field load
+        val bt: i32 = _chk.expr_type(base)
+        var struct_tid: i32 = bt
+        if bt >= TYPE_REF_BASE && bt < TYPE_ARRAY_BASE
+            struct_tid = bt - TYPE_REF_BASE
+        if struct_tid >= 4 && _types.category(struct_tid) == i32(TypeCategory.DATA)
+            val sname: u8[] = _struct_name(struct_tid)
+            val fname: u8[] = _scan.str_get(fsi)
+            _gen_lvalue_addr(base)
+            _put_str("    PUSH_FIELD_OFFSET ")
+            _put_str(sname)
+            _put_str(" ")
+            _put_str(fname)
+            _put_str("\n")
+            _put_str("    ADD_INT\n")
+            _put_str("    LOAD_GLOBAL_IND\n")
+#end

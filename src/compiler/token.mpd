@@ -1,0 +1,81 @@
+// ── token.mpd ─────────────────────────────────────────────────────────────────
+// Token kinds for the Pico-Panda scanner.
+
+enum TokenKind
+    // ── Literals ──────────────────────────────────────────────────────────────
+    LIT_INT     = 0
+    LIT_FIXED   = 1
+    LIT_STR     = 2
+    LIT_TRUE    = 3
+    LIT_FALSE   = 4
+    // ── Identifier ────────────────────────────────────────────────────────────
+    IDENT       = 5
+    // ── Keywords ──────────────────────────────────────────────────────────────
+    KW_VAR      = 10
+    KW_VAL      = 11
+    KW_CONST    = 12
+    KW_FUN      = 13
+    KW_DATA     = 14
+    KW_ENUM     = 15
+    KW_IF       = 16
+    KW_ELSE     = 17
+    KW_WHILE    = 18
+    KW_FOR      = 19
+    KW_IN       = 20
+    KW_RETURN   = 21
+    KW_BREAK    = 22
+    KW_CONTINUE = 23
+    KW_MATCH    = 24
+    KW_INT      = 25
+    KW_FIXED    = 26
+    KW_BOOL     = 27
+    KW_BYTE     = 28
+    // ── Operators ─────────────────────────────────────────────────────────────
+    PLUS        = 40    // +
+    MINUS       = 41    // -
+    STAR        = 42    // *
+    SLASH       = 43    // /
+    PERCENT     = 44    // %
+    AMP         = 45    // &
+    PIPE        = 46    // |
+    CARET       = 47    // ^
+    TILDE       = 48    // ~
+    LSHIFT      = 49    // <<
+    RSHIFT      = 50    // >>
+    EQ          = 51    // =
+    EQEQ        = 52    // ==
+    NEQ         = 53    // !=
+    LT          = 54    // <
+    LE          = 55    // <=
+    GT          = 56    // >
+    GE          = 57    // >=
+    PLUS_EQ     = 58    // +=
+    MINUS_EQ    = 59    // -=
+    STAR_EQ     = 60    // *=
+    SLASH_EQ    = 61    // /=
+    PERCENT_EQ  = 62    // %=
+    AND_AND     = 63    // &&
+    OR_OR       = 64    // ||
+    BANG        = 65    // !
+    ARROW       = 66    // →  (→ or ->)
+    WALRUS      = 67    // :=
+    DOTDOT      = 68    // ..
+    // ── Punctuation ───────────────────────────────────────────────────────────
+    LPAREN      = 70    // (
+    RPAREN      = 71    // )
+    LBRACKET    = 72    // [
+    RBRACKET    = 73    // ]
+    COLON       = 74    // :
+    COMMA       = 75    // ,
+    DOT         = 76    // .
+    AT          = 77    // @
+    AMP_BRACE   = 78    // {&  (slice literal open)
+    RBRACE      = 79    // }
+    UNDERSCORE  = 80    // _  (wildcard in match)
+    // ── Layout ────────────────────────────────────────────────────────────────
+    NEWLINE     = 90
+    INDENT      = 91
+    DEDENT      = 92
+    // ── Meta ──────────────────────────────────────────────────────────────────
+    EOF         = 99
+    ERROR       = 100

@@ -1,0 +1,216 @@
+// ── symbols.mpd ───────────────────────────────────────────────────────────────
+// Symbol table for the Pico-Panda compiler.
+//
+// Symbols are split into two scopes:
+//   Global scope  — var/val/const/fun/data/enum declarations at top level
+//   Local scope   — parameters + local var/val/const inside a function
+//
+// The local scope is a stack of frames (push_frame / pop_frame).
+// Local symbols shadow global ones.
+//
+// Each symbol carries:
+//   kind     — SymbolKind
+//   type_id  — resolved type
+//   slot     — for locals: slot index (parameter 0..argc-1, then var 0..n-1)
+//              for globals: data-segment address (assigned by GlobalLayout)
+//              for funs: declaration index (into the DeclPool)
+//              for consts: literal value (int) or -1 (needs codegen inline)
+//   is_val   — true if binding is immutable (val/const)
+
+#if HOSTED
+import memory::HeapAllocator
+import collection::HeapList
+import collection::HeapMap
+
+enum SymbolKind
+    VAR         = 0   // mutable variable
+    VAL         = 1   // immutable binding
+    CONST       = 2   // compile-time constant
+    FUN         = 3   // function
+    DATA_TYPE   = 4   // data struct name
+    ENUM_TYPE   = 5   // enum type name
+
+class SymbolTable()
+    var _heap:          &HeapAllocator
+
+    // ── Global symbols ────────────────────────────────────────────────────
+    var _g_names:       HeapMap<i32>    // name string idx → global slot index
+    var _g_kinds:       HeapList<i32>
+    var _g_types:       HeapList<i32>
+    var _g_slots:       HeapList<i32>
+    var _g_vals:        HeapList<i32>   // 1 = immutable
+
+    // ── Local scope stack ─────────────────────────────────────────────────
+    // Each frame is [start, count] in the flat local lists.
+    var _l_frame_start: HeapList<i32>
+    var _l_frame_count: HeapList<i32>
+    var _l_names:       HeapList<i32>   // string indices
+    var _l_kinds:       HeapList<i32>
+    var _l_types:       HeapList<i32>
+    var _l_slots:       HeapList<i32>
+    var _l_vals:        HeapList<i32>
+
+    var _next_param_slot: i32 = 0
+    var _next_var_slot:   i32 = 0
+    var _param_count:     i32 = 0   // set when entering a function
+
+    var _errors: i32 = 0
+
+    fun init(heap: &HeapAllocator)
+        _heap = heap
+        _g_names.init(heap)
+        _g_kinds.init(heap)
+        _g_types.init(heap)
+        _g_slots.init(heap)
+        _g_vals.init(heap)
+        _l_frame_start.init(heap)
+        _l_frame_count.init(heap)
+        _l_names.init(heap)
+        _l_kinds.init(heap)
+        _l_types.init(heap)
+        _l_slots.init(heap)
+        _l_vals.init(heap)
+
+    // ── Global scope ──────────────────────────────────────────────────────
+
+    fun define_global(name_si: i32, name: u8[], kind: i32, type_id: i32, slot: i32, is_val: i32)
+        if _g_names.contains(name)
+            _errors++
+            return
+        val gi: i32 = i32(_g_kinds.size())
+        _g_names.set(name, gi)
+        _g_kinds.push(kind)
+        _g_types.push(type_id)
+        _g_slots.push(slot)
+        _g_vals.push(is_val)
+
+    // ── Local scope ───────────────────────────────────────────────────────
+
+    fun push_frame()
+        _l_frame_start.push(i32(_l_names.size()))
+        _l_frame_count.push(0)
+        _next_param_slot = 0
+        _next_var_slot   = 0
+
+    fun pop_frame()
+        if _l_frame_start.is_empty()
+            return
+        val count: i32 = _l_frame_count.get(_l_frame_start.size() - 1)
+        var i: i32 = 0
+        while i < count
+            _l_names.pop()
+            _l_kinds.pop()
+            _l_types.pop()
+            _l_slots.pop()
+            _l_vals.pop()
+            i++
+        _l_frame_start.pop()
+        _l_frame_count.pop()
+
+    fun define_param(name: u8[], type_id: i32)
+        val slot: i32 = _next_param_slot++
+        _param_count    = _next_param_slot
+        _define_local(name, i32(SymbolKind.VAR), type_id, slot, 0)
+
+    fun define_local(name: u8[], kind: i32, type_id: i32, is_val: i32)
+        val slot: i32 = _param_count + _next_var_slot++
+        _define_local(name, kind, type_id, slot, is_val)
+
+    fun _define_local(name: u8[], kind: i32, type_id: i32, slot: i32, is_val: i32)
+        if _l_frame_start.is_empty()
+            return
+        val fi: i32 = i32(_l_frame_start.size()) - 1
+        _l_frame_count.set(u32(fi), _l_frame_count.get(u32(fi)) + 1)
+        _l_names.push(0)    // placeholder; we use name lookup via linear scan
+        _l_kinds.push(kind)
+        _l_types.push(type_id)
+        _l_slots.push(slot)
+        _l_vals.push(is_val)
+        // Store the name in a separate structure for lookup:
+        // We repurpose _l_names as the string index of the name.
+        val li: i32 = i32(_l_names.size()) - 1
+        // We'll store the actual string-index by scanning from frame start.
+        // This is a simple linear scan on lookup — fine for small functions.
+        _l_names.set(u32(li), 0)   // overwrite placeholder; real name stored below
+
+    // We need a name → slot lookup that works without a per-frame map.
+    // Store: all locals across all frames in _l_names as plain string indices.
+    // Lookup scans backwards from end.
+    fun define_local_named(name_si: i32, name: u8[], kind: i32, type_id: i32, is_val: i32)
+        if _l_frame_start.is_empty()
+            return
+        val fi: i32 = i32(_l_frame_start.size()) - 1
+        _l_frame_count.set(u32(fi), _l_frame_count.get(u32(fi)) + 1)
+        val slot: i32 = _param_count + _next_var_slot++
+        _l_names.push(name_si)
+        _l_kinds.push(kind)
+        _l_types.push(type_id)
+        _l_slots.push(slot)
+        _l_vals.push(is_val)
+
+    fun define_param_named(name_si: i32, name: u8[], type_id: i32)
+        if _l_frame_start.is_empty()
+            return
+        val fi: i32 = i32(_l_frame_start.size()) - 1
+        _l_frame_count.set(u32(fi), _l_frame_count.get(u32(fi)) + 1)
+        val slot: i32 = _next_param_slot++
+        _param_count = _next_param_slot
+        _l_names.push(name_si)
+        _l_kinds.push(i32(SymbolKind.VAR))
+        _l_types.push(type_id)
+        _l_slots.push(slot)
+        _l_vals.push(0)
+
+    // ── Lookup ────────────────────────────────────────────────────────────
+    // lookup_local / lookup_global return a list index (>=0) on success, -1 if not found.
+    // Use local_kind/local_type/local_slot/local_val and global_* to read the result.
+
+    fun lookup_local(name_si: i32) i32
+        var i: i32 = i32(_l_names.size()) - 1
+        while i >= 0
+            if _l_names.get(u32(i)) == name_si
+                return i
+            i--
+        return -1
+
+    fun local_kind(li: i32) i32
+        return _l_kinds.get(u32(li))
+
+    fun local_type(li: i32) i32
+        return _l_types.get(u32(li))
+
+    fun local_slot(li: i32) i32
+        return _l_slots.get(u32(li))
+
+    fun local_val(li: i32) i32
+        return _l_vals.get(u32(li))
+
+    fun lookup_global(name: u8[]) i32
+        if !_g_names.contains(name)
+            return -1
+        return _g_names.get(name)
+
+    fun global_kind(gi: i32) i32
+        return _g_kinds.get(u32(gi))
+
+    fun global_type(gi: i32) i32
+        return _g_types.get(u32(gi))
+
+    fun global_slot(gi: i32) i32
+        return _g_slots.get(u32(gi))
+
+    fun global_val(gi: i32) i32
+        return _g_vals.get(u32(gi))
+
+    fun in_local_scope() bool
+        return !_l_frame_start.is_empty()
+
+    fun local_var_count() i32
+        return _next_var_slot
+
+    fun param_count() i32
+        return _param_count
+
+    fun error_count() i32
+        return _errors
+#end

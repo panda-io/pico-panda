@@ -1,0 +1,102 @@
+// ── compiler.mpd ──────────────────────────────────────────────────────────────
+// Pico-Panda compiler entry point.
+//
+// Pipeline:
+//   1. Scan    (scanner.mpd)    source text → token stream
+//   2. Parse   (parser.mpd)     token stream → AST (NodePool + DeclList)
+//   3. Check   (checker.mpd)    resolve types, validate expressions
+//   4. Codegen (codegen.mpd)    AST → PPasm text (in memory)
+//   5. Assemble (assembler.mpd) PPasm text → bytecode (optional, via write_bytecode)
+//
+// Multi-file design:
+//   For now, one Compiler instance handles one source string.
+//   Multi-file support will be added via a shared Scanner/NodePool/DeclList
+//   once the string-pool architecture is extended.
+//
+// Usage:
+//   var c: Compiler
+//   if c.compile(src)
+//       val asm: u8[] = c.asm_output()
+//       c.write_bytecode("out.ppd")
+
+#if HOSTED
+import memory::HeapAllocator
+import compiler.scanner::Scanner
+import compiler.parser::Parser
+import compiler.checker::Checker
+import compiler.codegen::Codegen
+import assembler.assembler::Assembler
+import file::*
+import console::*
+
+class Compiler()
+    var _heap:    HeapAllocator
+    var _scanner: Scanner
+    var _parser:  Parser
+    var _checker: Checker
+    var _codegen: Codegen
+    var _errors:  i32 = 0
+
+    fun compile(src: u8[]) bool
+        _errors = 0
+
+        // ── Phase 1: scan ─────────────────────────────────────────────────
+        _scanner.init(&_heap, src)
+        if !_scanner.scan()
+            _errors = _errors + _scanner.error_count()
+            return false
+
+        // ── Phase 2: parse ────────────────────────────────────────────────
+        _parser.init(&_heap, &_scanner)
+        if !_parser.parse()
+            _errors = _errors + _parser.error_count()
+            return false
+
+        // ── Phase 3: check ────────────────────────────────────────────────
+        _checker.init(&_heap, &_scanner, _parser.nodes(), _parser.decls())
+        if !_checker.check()
+            _errors = _errors + _checker.error_count()
+            return false
+
+        // ── Phase 4: codegen ──────────────────────────────────────────────
+        _codegen.init(&_heap, &_scanner, _parser.nodes(), _parser.decls(), _checker.types(), &_checker)
+        if !_codegen.gen()
+            _errors = _errors + _codegen.error_count()
+            return false
+
+        return true
+
+    fun error_count() i32
+        return _errors
+
+    // Return the generated PPasm assembly text.
+    fun asm_output() u8[]
+        return _codegen.output()
+
+    // Assemble the generated PPasm text and write bytecode to out_path.
+    fun write_bytecode(out_path: u8[]) bool
+        val asm_src: u8[] = _codegen.output()
+        var asmbler: Assembler
+        asmbler.init()
+        if !asmbler.pass1_str(asm_src)
+            return false
+        asmbler.reset_pc()
+        if !asmbler.pass2_str(asm_src)
+            return false
+        val bc: u8[] = asmbler.get_bytecode()
+        var f: File
+        if !f.open(out_path, WRITE)
+            return false
+        f.write_bytes(bc)
+        f.close()
+        return true
+
+    fun parser() &Parser
+        return &_parser
+
+// ── Standalone helpers ────────────────────────────────────────────────────────
+
+fun pp_compile(src: u8[]) bool
+    var c: Compiler
+    return c.compile(src)
+#end
