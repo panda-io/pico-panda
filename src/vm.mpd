@@ -8,6 +8,10 @@ import opcode::*
 import console::*
 import vm_error::VmError
 
+enum Code
+    Sys
+    App
+
 // ── VM ────────────────────────────────────────────────────────────────────────
 // Single instance holds both system and app contexts plus the shared event bus.
 
@@ -42,7 +46,7 @@ class VM()
     var _module_slots:         u8[MAX_MODULE_ID]     // module_id → slot+1 (0 = empty)
     var _module_fns:           fun(u8, &Task)[MAX_MODULES]
     var _module_count:         i32
-    var _current_handlers:     Handler[]             // set by _run_execute for module use
+    var _current_code:         Code
 
     // ── Error tracking ────────────────────────────────────────────────────────
     var _last_error:           VmError
@@ -68,7 +72,7 @@ class VM()
         output            = 0
         _last_error       = VmError.NONE
         _module_count     = 0
-        _current_handlers = {null, 0}
+        _current_code     = Code.Sys
         for i: i32 in range(0, MAX_MODULE_ID)
             _module_slots[i] = u8(0)
         for handler: &Handler in _handlers
@@ -81,8 +85,12 @@ class VM()
 
     // ── Module handler support ────────────────────────────────────────────────
 
-    fun current_handlers() Handler[]
-        return _current_handlers
+    fun spawn_handler() &Handler
+        val handlers: Handler[] = _ctx_handlers(_current_code)
+        for handler: &Handler in handlers
+            if !handler.active
+                return handler
+        return null
 
     fun emit_event(id: i32, task: &Task)
         _send(id, task)
@@ -116,7 +124,7 @@ class VM()
             _on_error(VmError.SPAWN_FAILED)
             return
         send_event(EVENT_SYS_START, 0, 0, 0, 0)
-        _run_execute(task, _sys_code, _sys_data, _sys_handlers)
+        _run_execute(task, Code.Sys)
         if task.state == TaskState.FINISHED
             task.active = false
         if _last_error != VmError.NONE
@@ -128,7 +136,7 @@ class VM()
             _on_error(VmError.SPAWN_FAILED)
             return
         send_event(EVENT_APP_START, 0, 0, 0, 0)
-        _run_execute(task, _app_code, _app_data, _app_handlers)
+        _run_execute(task, Code.App)
         if task.state == TaskState.FINISHED
             task.active = false
         if _last_error != VmError.NONE
@@ -170,7 +178,7 @@ class VM()
         // 3. Run active tasks
         for task: &Task in _sys_tasks
             if task.active && task.state == TaskState.RUNNING
-                _run_execute(task, _sys_code, _sys_data, _sys_handlers)
+                _run_execute(task, Code.Sys)
                 if task.state == TaskState.FINISHED
                     task.active = false
                     _release_handler(task, _sys_handlers)
@@ -180,13 +188,39 @@ class VM()
 
         for task: &Task in _app_tasks
             if task.active && task.state == TaskState.RUNNING
-                _run_execute(task, _app_code, _app_data, _app_handlers)
+                _run_execute(task, Code.App)
                 if task.state == TaskState.FINISHED
                     task.active = false
                     _release_handler(task, _app_handlers)
                 if _last_error != VmError.NONE
                     _on_error(_last_error)
                     return
+
+    // ── Private: context helpers ──────────────────────────────────────────────
+
+    @inline
+    fun _code(which: Code) u8[]
+        if which == Code.Sys
+            return _sys_code
+        return _app_code
+
+    @inline
+    fun _data(which: Code) u8[]
+        if which == Code.Sys
+            return _sys_data
+        return _app_data
+
+    @inline
+    fun _ctx_handlers(which: Code) Handler[]
+        if which == Code.Sys
+            return _sys_handlers
+        return _app_handlers
+
+    @inline
+    fun _ctx_tasks(which: Code) Task[]
+        if which == Code.Sys
+            return _sys_tasks
+        return _app_tasks
 
     // ── Private: task helpers ─────────────────────────────────────────────────
 
@@ -226,18 +260,18 @@ class VM()
     @inline
     fun _dispatch_event(event: &Event)
         for handler: &Handler in _sys_handlers
-            _process_event(event, handler, _sys_code, _sys_data, _sys_handlers, _sys_tasks)
+            _process_event(event, handler, Code.Sys)
         for handler: &Handler in _app_handlers
-            _process_event(event, handler, _app_code, _app_data, _app_handlers, _app_tasks)
+            _process_event(event, handler, Code.App)
 
     @inline
-    fun _process_event(event: &Event, handler: &Handler, code: u8[], data: u8[], handlers: Handler[], tasks: Task[])
+    fun _process_event(event: &Event, handler: &Handler, which: Code)
         // ignore handlers if its task is suspended (sleeping) or not active
         if handler.active && handler.event_id == event.id && handler.task == null
-            val task: &Task = _spawn_task(handler.addr, tasks)
+            val task: &Task = _spawn_task(handler.addr, _ctx_tasks(which))
             if task != null
                 _load_event_data(event, task)
-                _run_execute(task, code, data, handlers)
+                _run_execute(task, which)
                 if _last_error != VmError.NONE
                     _on_error(_last_error)
                     return
@@ -301,7 +335,7 @@ class VM()
     fun _boot_sys_no_err()
         val task: &Task = _spawn_task(0, _sys_tasks)
         if task != null
-            _run_execute(task, _sys_code, _sys_data, _sys_handlers)
+            _run_execute(task, Code.Sys)
             if task.state == TaskState.FINISHED
                 task.active = false
         _last_error = VmError.NONE
@@ -317,8 +351,10 @@ class VM()
 
     // ── Execute loops ─────────────────────────────────────────────────────────
 
-    fun _run_execute(task: &Task, code: u8[], data: u8[], handlers: Handler[])
-        _current_handlers = handlers
+    fun _run_execute(task: &Task, which: Code)
+        _current_code = which
+        val code: u8[] = _code(which)
+        val data: u8[] = _data(which)
         var pc: i32 = task.pc
         task.state = TaskState.RUNNING
 
@@ -550,10 +586,9 @@ fun _event_handler(sub: u8, task: &Task)
         EventCode.CreateHandler:
             val ha: i32 = task.pop()
             val he: i32 = task.pop()
-            for handler: &Handler in vm.current_handlers()
-                if !handler.active
-                    handler.init(he, ha)
-                    break
+            val handler: &Handler = vm.spawn_handler()
+            if handler != null
+                handler.init(he, ha)
         EventCode.ExitHandler:
             task.state = TaskState.FINISHED
         EventCode.HandlerSleep:

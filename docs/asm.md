@@ -331,7 +331,7 @@ fun abs_fn:     ; assembler auto-emits: RESERVE 1  (one .var slot → pushes one
 
 Stack trace for `add(10, 20)`:
 
-```
+```asm
 Before CALL:    [..., 10, 20]   sp = base+2
 After CALL:     unchanged        fp = base; sp_stack[0] = base
 After RESERVE 0: unchanged
