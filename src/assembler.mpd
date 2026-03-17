@@ -47,6 +47,7 @@ class Assembler()
     var _array_slices:    HeapMap<i32>      // array global name → (addr<<16)|count
     var _locals:          HeapMap<i32>      // local name → slot (rebuilt per fun)
     var _fun_argc:        HeapMap<i32>      // fun name → argc (pass 1 → pass 2)
+    var _fun_nvars:       HeapMap<i32>      // fun name → callee var count (pass 1 → pass 2)
     var _bytecode:        u8[MAX_BYTECODE]
     var _line:            u8[MAX_LINE]
     var _key_buf:         u8[128]           // temp buffer for building field keys
@@ -55,6 +56,7 @@ class Assembler()
     var _cur_fun_buf:     u8[64]
     var _cur_fun:         u8[]
     var _local_idx:       i32
+    var _var_idx:         i32
     var _pc:              i32 = 0
     var _data_size:       i32 = 0
     var _cur_struct_off:  i32 = 0
@@ -77,7 +79,9 @@ class Assembler()
         _array_slices.init(&_heap)
         _locals.init(&_heap)
         _fun_argc.init(&_heap)
+        _fun_nvars.init(&_heap)
         _local_idx = 0
+        _var_idx   = 0
         _cur_fun   = {null, 0}
         _opcodes.set("PUSH",             i32(OpCode.Push))
         _opcodes.set("PUSH_FLOAT",       i32(OpCode.Push))
@@ -177,8 +181,10 @@ class Assembler()
             return 5
         if equals(m, "PUSH_ADDR") || equals(m, "PUSH_SLICE") || equals(m, "PUSH_FIELD_OFFSET")
             return 5    // emitted as PUSH opcode + i32
-        if equals(m, "JMP") || equals(m, "JMP_IF_TRUE") || equals(m, "JMP_IF_FALSE") || equals(m, "CALL")
+        if equals(m, "JMP") || equals(m, "JMP_IF_TRUE") || equals(m, "JMP_IF_FALSE")
             return 3
+        if equals(m, "CALL")
+            return 4
         if equals(m, "CALL_MODULE")
             return 3
         if equals(m, "LOAD_GLOBAL") || equals(m, "STORE_GLOBAL")
@@ -337,6 +343,12 @@ class Assembler()
                 _fun_argc.set(_cur_fun, _local_idx + 1)
             _local_idx++
             return
+        if equals(dir, ".var")
+            _locals.set(args, _local_idx + _var_idx)
+            if pass == AsmPass.SCAN
+                _fun_nvars.set(_cur_fun, _var_idx + 1)
+            _var_idx++
+            return
         if pass == AsmPass.EMIT
             return
         if equals(dir, ".struct")
@@ -377,6 +389,7 @@ class Assembler()
             if starts_with(line, "fun ")
                 _pc = _pc + 2
                 _local_idx = 0
+                _var_idx   = 0
                 _locals.init(&_heap)
                 var ni: u32 = 0
                 while ni < name.size() && ni < u32(64)
@@ -400,6 +413,7 @@ class Assembler()
         if _is_label(line)
             if starts_with(line, "fun ")
                 _local_idx = 0
+                _var_idx   = 0
                 _locals.init(&_heap)
                 val name: u8[] = _label_name(line)
                 var ni: u32 = 0
@@ -407,11 +421,11 @@ class Assembler()
                     _cur_fun_buf[ni] = name[ni]
                     ni++
                 _cur_fun = {&_cur_fun_buf[0], ni}
-                var argc: i32 = 0
-                if _fun_argc.contains(_cur_fun)
-                    argc = _fun_argc.get(_cur_fun)
-                _emit_u8(0x64)
-                _emit_u8(u8(argc))
+                var nvars: i32 = 0
+                if _fun_nvars.contains(_cur_fun)
+                    nvars = _fun_nvars.get(_cur_fun)
+                _emit_u8(i32(OpCode.Reserve))
+                _emit_u8(u8(nvars))
             return
         val m: u8[] = token(line, u32(0), u8(32))
         val op_pos: u32 = skip(line, m.size(), u8(32))
@@ -422,9 +436,16 @@ class Assembler()
         else if equals(m, "PUSH_FLOAT")
             _emit_u8(0x01)
             _emit_i32le(_parse_fixed(operand))
-        else if equals(m, "JMP") || equals(m, "JMP_IF_TRUE") || equals(m, "JMP_IF_FALSE") || equals(m, "CALL")
+        else if equals(m, "JMP") || equals(m, "JMP_IF_TRUE") || equals(m, "JMP_IF_FALSE")
             _emit_u8(_opcode(m))
             _emit_label(operand)
+        else if equals(m, "CALL")
+            _emit_u8(i32(OpCode.Call))
+            _emit_label(operand)
+            var argc: i32 = 0
+            if _fun_argc.contains(operand)
+                argc = _fun_argc.get(operand)
+            _emit_u8(u8(argc))
         else if equals(m, "CALL_MODULE")
             val id_str: u8[] = token(operand, u32(0), u8(32))
             val sub_pos: u32 = skip(operand, id_str.size(), u8(32))
@@ -564,6 +585,7 @@ class Assembler()
         _in_data_mode = false
         _in_struct    = false
         _local_idx    = 0
+        _var_idx      = 0
         _cur_fun      = {null, 0}
         _locals.init(&_heap)
 

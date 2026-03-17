@@ -55,8 +55,8 @@ enum OpCode
     Jmp          = 0x60  // JMP addr (u16)
     JmpIfTrue    = 0x61  // JMP_IF_TRUE addr (u16)
     JmpIfFalse   = 0x62  // JMP_IF_FALSE addr (u16)
-    Call         = 0x63  // CALL addr (u16); args stay on stack; callee uses ENTER/LOAD_LOCAL
-    Enter        = 0x64  // ENTER argc(u8) → fp = sp - argc; sp_stack[frame-1] = fp
+    Call         = 0x63  // CALL addr(u16) argc(u8) → fp = sp - argc; saves frame state
+    Reserve      = 0x64  // RESERVE n(u8) → push n zeros (callee var slots)
     Ret          = 0x65  // RET
     // Module dispatch
     CallModule   = 0x70  // CALL_MODULE module_id(u8) sub(u8)

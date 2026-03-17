@@ -238,23 +238,22 @@ fun test_jmp_if_false()
 @test
 fun test_call_ret()
     // layout:
-    //   0: PUSH 0 (argc=0)  5 bytes
-    //   5: CALL 17          3 bytes
-    //   8: PRINT_INT        3 bytes
-    //  11: EXIT             3 bytes
-    //  17: PUSH 42          5 bytes
-    //  22: RET              1 byte
+    //   0: PUSH 0           5 bytes
+    //   5: CALL 15 argc=0   4 bytes
+    //   9: PRINT_INT        3 bytes
+    //  12: EXIT             3 bytes
+    //  15: PUSH 42          5 bytes
+    //  20: RET              1 byte
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 0)
     i = _wb(code, i, u8(OpCode.Call))
-    i = _wu16(code, i, 17)
+    i = _wu16(code, i, 15)
+    i = _wb(code, i, u8(0))        // argc = 0
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    while i < 17
-        i = _wb(code, i, u8(OpCode.Drop))
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 42)
     i = _wb(code, i, u8(OpCode.Ret))

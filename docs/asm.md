@@ -116,13 +116,20 @@ Structs must be declared before any `.global` that uses them.
 ### `.local name`
 
 Declares a named alias for the next available argument slot within the current `fun`.
-No type — slots are untyped 4-byte cells. Names are resolved to slot indices at assemble time.
+Slots are numbered from 0 in declaration order and correspond to what the caller pushed
+left-to-right (slot 0 = first argument, slot 1 = second, etc.).
 
-Slots are numbered from 0 in declaration order and correspond to the arguments the caller pushed
-left-to-right. Slot 0 = first argument, slot 1 = second argument, etc.
+Must appear at the head of a `fun` block, before `.var` declarations and instructions.
 
-`.local` declarations must appear at the head of a `fun` block before any instructions.
-The assembler counts them and auto-emits `ENTER N` at the `fun` label position.
+### `.var name`
+
+Declares a named callee-owned local variable slot. Slots are numbered above the args
+(first `.var` gets slot argc, second gets argc+1, etc.).
+
+The assembler auto-emits `RESERVE N` at the `fun` label to push N zeros onto the stack,
+reserving space for all `.var` slots. `LOAD_LOCAL`/`STORE_LOCAL` access them by name.
+
+Both `.local` and `.var` must appear before any instructions in the `fun` block.
 
 ---
 
@@ -280,7 +287,7 @@ EVENT SEND
 
 ## Label and Fun Rules
 
-- `fun name:` declares a function — creates a label, opens a `.local` scope, and auto-emits `ENTER N`
+- `fun name:` declares a function — creates a label, opens a `.local`/`.var` scope, and auto-emits `RESERVE N`
 - Plain `label:` is valid for internal jump targets
 - Labels must be unique within a file
 - Labels may be forward-referenced (resolved in pass 2)
@@ -290,37 +297,51 @@ EVENT SEND
 
 ## Call Convention in ASM
 
-Caller pushes arguments left-to-right, then calls. No arg count is pushed.
-The callee uses `fun label:` + `.local` declarations; the assembler auto-emits `ENTER N`.
+Caller pushes arguments left-to-right then calls. The argc is encoded in the `CALL`
+instruction by the assembler (looked up from the callee's `.local` count). No explicit
+argc push at the call site.
 
 ```asm
+; args only
 PUSH 10         ; arg 0
 PUSH 20         ; arg 1
-CALL add        ; saves fp/ret/sp, sets fp = sp, jumps to add
+CALL add        ; 4 bytes: opcode + addr(u16) + argc(u8)=2
+                ; VM: fp = sp - argc = base; sp_stack = fp; jumps to add
 
-fun add:        ; assembler auto-emits: ENTER 2  (fp = sp - 2)
+fun add:        ; assembler auto-emits: RESERVE 0  (no .var slots)
     .local a    ; slot 0 (arg 0)
     .local b    ; slot 1 (arg 1)
-    LOAD_LOCAL a    ; push stack[fp + 0]
-    LOAD_LOCAL b    ; push stack[fp + 1]
+    LOAD_LOCAL a
+    LOAD_LOCAL b
     ADD_INT
-    RET             ; sp restored to pre-call base; retval pushed on top
+    RET         ; sp restored to pre-call base; retval pushed on top
+
+; args + callee vars
+PUSH -7
+CALL abs_fn
+
+fun abs_fn:     ; assembler auto-emits: RESERVE 1  (one .var slot → pushes one zero)
+    .local x    ; slot 0 (arg)
+    .var   result  ; slot 1 (callee var, initialised to 0 by RESERVE)
+    ...
+    STORE_LOCAL result
+    LOAD_LOCAL result
+    RET
 ```
 
-Stack trace:
+Stack trace for `add(10, 20)`:
 
 ```
-Before CALL:   [..., 10, 20]       sp = base+2
-After CALL:    unchanged            fp_stack[0]=fp, ret_stack[0]=pc, sp_stack[0]=base+2
-After ENTER 2: fp = base+2-2=base  sp_stack[0] overridden to base
-LOAD_LOCAL 0:  push stack[base+0]  = 10
-LOAD_LOCAL 1:  push stack[base+1]  = 20
-ADD_INT        push 30             sp = base+1
-RET:           retval=30; sp=base; push retval → [..., 30]
+Before CALL:    [..., 10, 20]   sp = base+2
+After CALL:     unchanged        fp = base; sp_stack[0] = base
+After RESERVE 0: unchanged
+LOAD_LOCAL 0:   push stack[base+0] = 10
+LOAD_LOCAL 1:   push stack[base+1] = 20
+ADD_INT:        push 30          sp = base+1
+RET:            retval=30; sp=base; push retval → [..., 30]
 ```
 
-Callee temporaries use the eval stack normally (PUSH / arithmetic / DROP).
-`STORE_LOCAL` can be used to mutate an argument slot in place.
+Callee temporaries (not needing named access) can use the eval stack directly.
 
 ---
 
@@ -441,10 +462,11 @@ Input is split into lines before pass 1. File and string sources are identical a
 | No operand (arithmetic, stack ops) | 1 |
 | `LOAD_GLOBAL_IND` / `STORE_GLOBAL_IND` | 1 |
 | `CALL_MODULE` | 3 (opcode + 2 × 1-byte subcodes) |
-| `JMP*` / `CALL` | 3 (opcode + 2-byte address) |
+| `JMP*` | 3 (opcode + 2-byte address) |
+| `CALL` | 4 (opcode + 2-byte address + 1-byte argc) |
 | `LOAD_GLOBAL` / `STORE_GLOBAL` | 3 (opcode + 2-byte data offset) |
 | `LOAD_LOCAL` / `STORE_LOCAL` | 2 (opcode + 1-byte slot index) |
-| `ENTER` (auto-emitted by `fun`) | 2 (opcode + 1-byte argc) |
+| `RESERVE` (auto-emitted by `fun`) | 2 (opcode + 1-byte var count) |
 | `PUSH` / `PUSH_FLOAT` | 5 (opcode + 4-byte value) |
 | `PUSH_ADDR` / `PUSH_SLICE` / `PUSH_FIELD_OFFSET` | 5 (emitted as `PUSH` + 4-byte value) |
 

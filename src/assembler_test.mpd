@@ -316,6 +316,35 @@ fun dbl:
 """))
     assert(vm.output == 14)
 
+@test
+fun test_asm_callee_var()
+    // abs(-7): callee stores result in a .var slot
+    assert(_boot_sys("""
+PUSH -7
+CALL abs_fn
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+fun abs_fn:
+    .local x
+    .var   result
+    LOAD_LOCAL x
+    PUSH 0
+    CMP_LT_INT
+    JMP_IF_FALSE abs_pos
+    PUSH 0
+    LOAD_LOCAL x
+    SUB_INT
+    STORE_LOCAL result
+    JMP abs_done
+abs_pos:
+    LOAD_LOCAL x
+    STORE_LOCAL result
+abs_done:
+    LOAD_LOCAL result
+    RET
+"""))
+    assert(vm.output == 7)
+
 // ── Array slice ───────────────────────────────────────────────────────────────
 
 @test
