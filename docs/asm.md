@@ -13,85 +13,114 @@ String input is the primary interface for unit testing — no file I/O required.
 ```asm
 ; this is a comment
 
-.global score: int = 0      ; global variable declarations (top level)
-.global buf: byte[256]
+.data
+.struct Point
+.field x
+.field y
+.end
+.global score: i32
+.global pos:   Point
+.global buf:   i32[64]
 
-@signal(tick)               ; annotation before fun
-fun update:
-    .local count            ; local slot alias (inside fun only)
-    LOAD_GLOBAL score
-    PUSH 1
-    ADD_INT
-    STORE_GLOBAL score
-    EVENT EXIT_HANDLER
+.code
+PUSH 42
+STORE_GLOBAL score
 ```
 
 - **Comments**: `;` to end of line
-- **Labels**: identifier followed by `:` on its own (or inline before a mnemonic)
-- **Directives**: `.global`, `.local` — assembler-only, emit no bytecode
-- **Annotations**: `@signal(name)` before `fun` — generates handler registration
+- **Labels**: identifier followed by `:` on its own line (or on the same line as a mnemonic)
+- **Sections**: `.data` and `.code` switch the assembler between data-declaration and code-emission modes
+- **Directives**: `.global`, `.struct`, `.field`, `.end` — assembler-only, emit no bytecode
+- **Annotations**: `@signal(name)` before `fun` — generates handler registration *(planned)*
 - **Mnemonics**: case-insensitive, one per line
 - **Whitespace**: leading/trailing ignored; tokens separated by spaces
 
 ---
 
-## Declarations
+## Sections
 
-### `.global name: type [= value]`
+### `.data`
 
-Declares a global variable. The assembler assigns it a byte offset in the global segment.
-All names in instructions are resolved to their offsets at assemble time.
+Switches to data-declaration mode. All `.global`, `.struct`, `.field`, and `.end` directives
+must appear inside a `.data` block. No bytecode is emitted in this mode.
+
+### `.code`
+
+Switches back to code-emission mode. Instructions must appear inside a `.code` block (or
+before any `.data` block — the assembler starts in code mode).
 
 ```asm
-.global score: int = 0          ; 4 bytes, offset 0
-.global gravity: fixed = 1.0    ; 4 bytes, offset 4
-.global alive: bool = 1         ; 4 bytes, offset 8
-.global buf: byte[256]          ; 256 bytes, offset 12
-.global pool: int[64]           ; 256 bytes, offset 268 (next 4-byte boundary)
+.data
+.global x: i32
+.global y: fixed
+
+.code
+PUSH 99
+STORE_GLOBAL x
+```
+
+---
+
+## Declarations
+
+### `.global name: type`
+
+Allocates a named variable in the data segment. The assembler assigns it a byte offset and
+makes the name available to `LOAD_GLOBAL`, `STORE_GLOBAL`, `PUSH_ADDR`, `PUSH_SLICE`, and
+`PUSH_FIELD_OFFSET` instructions.
+
+```asm
+.data
+.global score:   i32         ; 4 bytes, offset 0
+.global gravity: fixed       ; 4 bytes, offset 4
+.global alive:   bool        ; 4 bytes, offset 8
+.global pos:     Point       ; size of struct Point, offset 12
+.global buf:     i32[64]     ; 64 × 4 = 256 bytes
+.global raw:     u8[256]     ; 256 × 4 = 1024 bytes
 ```
 
 Supported types:
 
 | Declaration | Size | Notes |
 | :--- | :---: | :--- |
-| `int` | 4 bytes | 32-bit signed |
+| `i32` | 4 bytes | 32-bit signed integer |
+| `u32` | 4 bytes | 32-bit unsigned integer |
+| `u8` | 4 bytes | byte value (word-aligned slot) |
 | `fixed` | 4 bytes | 16.16 fixed-point |
 | `bool` | 4 bytes | 0 or 1 |
-| `byte` | 1 byte | raw byte (use `byte[]` in practice) |
-| `byte[N]` | N bytes | raw buffer or string storage |
-| `int[N]` | N × 4 bytes | int array |
-| `fixed[N]` | N × 4 bytes | fixed array |
+| `StructName` | struct size | must be declared before the `.global` |
+| `T[N]` | N × 4 bytes | array; also registers a packed slice for `PUSH_SLICE` |
 
-Initial values in `.global` declarations are zero-filled in the global segment.
-String defaults (`= "hello"`) are **not** supported — copy from constant pool explicitly at `@signal(start)`.
+All scalar types occupy 4 bytes. There is no 1-byte slot type.
 
-### `.local name`
+Initial values in `.global` declarations are zero-initialised by the host; no explicit
+initialiser syntax is supported in the assembler — write initial values in startup code.
+
+### `.struct Name` / `.field fname` / `.end`
+
+Defines a struct type. Each `.field` allocates a 4-byte slot. `.end` records the total size
+so that `.global` and `PUSH_FIELD_OFFSET` can use the struct by name.
+
+```asm
+.data
+.struct Point
+.field x        ; offset 0  (4 bytes)
+.field y        ; offset 4  (4 bytes)
+.end            ; Point size = 8
+
+.global p: Point    ; 8 bytes
+```
+
+Structs must be declared before any `.global` that uses them.
+
+### `.local name` *(planned)*
 
 Declares a named alias for the next available local slot within the current `fun`.
 No type — slots are untyped 4-byte cells. Names are resolved to slot indices at assemble time.
 
-```asm
-fun my_func:
-    .local x        ; slot 0
-    .local y        ; slot 1
-    .local temp     ; slot 2
-
-    PUSH 10
-    STORE_LOCAL x   ; → STORE_LOCAL 0
-    PUSH 20
-    STORE_LOCAL y   ; → STORE_LOCAL 1
-    LOAD_LOCAL x
-    LOAD_LOCAL y
-    ADD_INT
-    RET
-```
-
-`.local` declarations must appear at the top of `fun`, before any instructions.
-Slot numbering starts at 0. Arguments passed by the caller occupy the first N slots automatically.
-
 ---
 
-## Signal Annotation
+## Signal Annotation *(planned)*
 
 ### `@signal(name)`
 
@@ -100,45 +129,12 @@ Placed before a `fun` declaration to register that function as a handler for the
 ```asm
 @signal(start)
 fun init:
-    ; runs once at startup
     EVENT EXIT_HANDLER
 
 @signal(tick)
 fun update:
-    ; runs every tick
-    EVENT EXIT_HANDLER
-
-@signal(tick, 3)
-fun slow_update:
-    ; runs every 3 ticks
     EVENT EXIT_HANDLER
 ```
-
-The assembler automatically generates `CREATE_HANDLER` calls for each `@signal` function
-at the beginning of the bytecode, before any user code executes.
-
-### Signal ID assignment
-
-Signal names are **strings in ASM source only** — no names are stored in bytecode.
-The assembler resolves each name to an `i32` event_id using two rules:
-
-**System signals** — fixed IDs that the host C code also uses as constants:
-
-| ID | Name |
-| :---: | :--- |
-| 1 | `start` |
-| 2 | `tick` |
-
-**User-defined signals** — any name not in the system table.
-The assembler collects them in pass 1 and assigns sequential IDs starting at `0x100`:
-
-```asm
-@signal(explode)    ; first user signal  → event_id = 0x100
-@signal(respawn)    ; second user signal → event_id = 0x101
-```
-
-User signals are only sent/received within the bytecode (via `EVENT SEND`).
-The host never needs to know their IDs.
 
 ---
 
@@ -150,8 +146,10 @@ The host never needs to know their IDs.
 | Fixed literal | `1.5`, `-0.25` | 4-byte LE i32 (converted at assemble time) |
 | String literal | `"hello"` | Constant pool reference (4-byte LE offset) |
 | Label / fun name | `start`, `update` | 2-byte LE address |
-| Global name | `score`, `buf` | 2-byte LE byte offset (resolved from `.global`) |
-| Local name | `x`, `temp` | 1-byte slot index (resolved from `.local`) |
+| Global name | `score`, `buf` | 2-byte LE data-segment byte offset |
+| Data address | `PUSH_ADDR name` | i32 data-segment byte offset (emitted as `PUSH`) |
+| Packed slice | `PUSH_SLICE name` | i32 packed as `(addr << 16) count` (emitted as `PUSH`) |
+| Field offset | `PUSH_FIELD_OFFSET Type f` | i32 byte offset within struct (emitted as `PUSH`) |
 | Slot index | `0`–`15` | 1-byte |
 | Subcode | `PRINT_INT` | 1-byte |
 
@@ -172,50 +170,65 @@ PUSH_FLOAT -0.5     ; equivalent to PUSH -32768  (0xFFFF8000)
 
 Emits a standard `PUSH` (0x01) with the converted 4-byte fixed value.
 
-### `PUSH_STR <"string">`
+### `PUSH_ADDR <name>`
 
-Stores the string in the constant pool and pushes its byte address.
+Pushes the data-segment byte offset of a named global. Use this to pass a pointer to
+`LOAD_GLOBAL_IND` / `STORE_GLOBAL_IND` or to do pointer arithmetic.
 
 ```asm
-PUSH_STR "hello"    ; push constant pool address of "hello"
-SYSCALL PRINT_STR
+PUSH_ADDR score     ; push i32 data address of 'score'
 ```
 
-Emits a standard `PUSH` (0x01) with the 4-byte constant pool offset.
-Each unique string is stored once.
+Emits `PUSH` (0x01) + 4-byte offset.
+
+### `PUSH_SLICE <name>`
+
+Pushes a packed representation of an array global: `(addr << 16) | count`.
+
+```asm
+PUSH_SLICE buf      ; push packed slice: (offset_of_buf << 16) | element_count
+```
+
+Emits `PUSH` (0x01) + 4-byte packed value. Only valid for globals declared with `T[N]`.
+
+### `PUSH_FIELD_OFFSET <Type> <field>`
+
+Pushes the byte offset of a named field within a struct type. Add to a base address to get
+the field's address.
+
+```asm
+PUSH_FIELD_OFFSET Point y   ; push 4 (byte offset of 'y' in Point)
+```
+
+Emits `PUSH` (0x01) + 4-byte offset.
+
+### `PUSH_STR <"string">` *(planned)*
+
+Stores the string in the constant pool and pushes its byte address.
 
 ---
 
 ## Instruction Reference
 
-See `vm.md` for full opcode details. Summary of operand syntax:
-
 ```asm
-; Scalar global (4-byte read/write by name or offset)
-LOAD_GLOBAL score       ; name → 2-byte byte offset
-STORE_GLOBAL score
-LOAD_GLOBAL 0           ; raw offset also accepted
+; Scalar global access by name (direct — 2-byte offset operand)
+LOAD_GLOBAL  score      ; push 4-byte value of global 'score'
+STORE_GLOBAL score      ; pop value, store into global 'score'
 
-; Pointer to global (for arrays and struct fields)
-ADDR_GLOBAL buf         ; push byte address of buf[0]
-ADDR_GLOBAL pool
+; Indirect global access (address on stack — no operand)
+LOAD_GLOBAL_IND         ; pop addr → push 4-byte value at addr
+STORE_GLOBAL_IND        ; pop value, pop addr → store value at addr
 
-; Memory access through pointer (addr on stack)
-MEM_LOAD_INT            ; pop addr → push 4-byte int
-MEM_STORE_INT           ; pop int, pop addr → store
-MEM_LOAD_BYTE           ; pop addr → push byte (zero-extended)
-MEM_STORE_BYTE          ; pop int (low byte), pop addr → store byte
-
-; Locals (by name or slot index)
-LOAD_LOCAL x            ; name → slot index
-STORE_LOCAL x
-LOAD_LOCAL 0            ; raw slot index also accepted
-STORE_LOCAL 0
+; Data-segment address helpers
+PUSH_ADDR  buf                   ; push i32 byte address of 'buf'
+PUSH_SLICE buf                   ; push packed (addr<<16 | count)
+PUSH_FIELD_OFFSET Point y        ; push byte offset of field 'y' in Point
 
 ; Immediate
 PUSH 42
+PUSH 0xFF
+PUSH -7
 PUSH_FLOAT 1.5
-PUSH_STR "hello"
 
 ; Stack
 DUP   SWAP   DROP
@@ -236,38 +249,36 @@ FIXED_TO_INT
 CMP_EQ_INT  CMP_NE_INT  CMP_LT_INT  CMP_LE_INT  CMP_GT_INT  CMP_GE_INT
 CMP_EQ_FIXED  CMP_NE_FIXED  CMP_LT_FIXED  CMP_LE_FIXED  CMP_GT_FIXED  CMP_GE_FIXED
 
-; Control flow (labels only, not raw addresses)
+; Control flow
 JMP label
-JMP_IF_TRUE label
+JMP_IF_TRUE  label
 JMP_IF_FALSE label
-CALL label          ; arg_count must be on top of stack
+CALL  label
 RET
 
-; System calls
-SYSCALL PRINT_INT
-SYSCALL PRINT_FIXED
-SYSCALL PRINT_STR
+; Module calls
+CALL_MODULE module_id sub_id    ; e.g. CALL_MODULE 0x01 0x01
 
-; Events
-EVENT CREATE_HANDLER    ; stack: [event_id, addr] — event_id is i32
+; Events (planned)
+EVENT CREATE_HANDLER
 EVENT EXIT_HANDLER
-EVENT HANDLER_SLEEP     ; stack: [ticks]
-EVENT SEND              ; stack: [event_id]
+EVENT HANDLER_SLEEP
+EVENT SEND
 ```
 
 ---
 
 ## Label and Fun Rules
 
-- `fun name:` declares a function — creates a label and opens a `.local` scope
-- Plain `label:` also valid for internal jump targets (no `.local` scope)
+- `fun name:` declares a function — creates a label and opens a `.local` scope *(planned)*
+- Plain `label:` is valid for internal jump targets
 - Labels must be unique within a file
 - Labels may be forward-referenced (resolved in pass 2)
 - A label refers to the byte offset of the next instruction
 
 ---
 
-## Call Convention in ASM
+## Call Convention in ASM *(planned)*
 
 Caller pushes arguments left-to-right, then pushes the count, then calls:
 
@@ -277,7 +288,6 @@ PUSH 20         ; arg 1
 PUSH 2          ; arg count
 CALL add
 
-; add receives: local 0 = 10, local 1 = 20
 fun add:
     .local a    ; slot 0 (arg 0)
     .local b    ; slot 1 (arg 1)
@@ -289,50 +299,93 @@ fun add:
 
 ---
 
-## Array Access Patterns
+## Data Access Patterns
 
-### `byte[]` buffer (raw memory)
+### Scalar global (direct)
 
 ```asm
-.global buf: byte[256]
+.data
+.global score: i32
+.code
 
-; buf[i] = 65
-ADDR_GLOBAL buf     ; push base address of buf
-LOAD_LOCAL i        ; push index
-ADD_INT             ; addr = base + i
-PUSH 65
-MEM_STORE_BYTE
+; store
+PUSH 42
+STORE_GLOBAL score
 
-; x = buf[i]
-ADDR_GLOBAL buf
-LOAD_LOCAL i
-ADD_INT
-MEM_LOAD_BYTE       ; push byte (zero-extended to int)
-STORE_LOCAL x
+; load
+LOAD_GLOBAL score
 ```
 
-### `int[]` array
+### Scalar global (indirect via `PUSH_ADDR`)
 
 ```asm
-.global pool: int[64]
+.data
+.global score: i32
+.code
 
-; pool[i] = val
-ADDR_GLOBAL pool
-LOAD_LOCAL i
-PUSH 4
-MUL_INT             ; byte offset = i * 4
-ADD_INT
-LOAD_LOCAL val
-MEM_STORE_INT
+; store via pointer
+PUSH 42
+PUSH_ADDR score
+STORE_GLOBAL_IND
 
-; x = pool[i]
-ADDR_GLOBAL pool
-LOAD_LOCAL i
+; load via pointer
+PUSH_ADDR score
+LOAD_GLOBAL_IND
+```
+
+### Array element access
+
+Each element is 4 bytes. Compute `base + index * 4` then use `LOAD_GLOBAL_IND` / `STORE_GLOBAL_IND`.
+
+```asm
+.data
+.global arr: i32[4]
+.code
+
+; arr[2] = 33
+PUSH 33
+PUSH_ADDR arr
+PUSH 2
 PUSH 4
 MUL_INT
 ADD_INT
-MEM_LOAD_INT
-STORE_LOCAL x
+STORE_GLOBAL_IND
+
+; x = arr[2]
+PUSH_ADDR arr
+PUSH 2
+PUSH 4
+MUL_INT
+ADD_INT
+LOAD_GLOBAL_IND
+```
+
+### Struct field access
+
+Use `PUSH_ADDR` for the base address, `PUSH_FIELD_OFFSET Type field` for the offset,
+`ADD_INT` to get the field address, then `LOAD_GLOBAL_IND` / `STORE_GLOBAL_IND`.
+
+```asm
+.data
+.struct Point
+.field x
+.field y
+.end
+.global p: Point
+.code
+
+; p.y = 55
+PUSH 55
+PUSH_ADDR p
+PUSH_FIELD_OFFSET Point y
+ADD_INT
+STORE_GLOBAL_IND
+
+; v = p.y
+PUSH_ADDR p
+PUSH_FIELD_OFFSET Point y
+ADD_INT
+LOAD_GLOBAL_IND
 ```
 
 ---
@@ -343,93 +396,129 @@ Input is split into lines before pass 1. File and string sources are identical a
 
 ### Pass 1
 
-- Collect all `.global` declarations → build offset table, compute `global_size`
-- Collect all `@signal` names → assign event IDs (system signals get fixed IDs; user signals get sequential IDs from `0x100`)
-- Walk instructions; record each `fun`/`label` → current byte offset
-- Count `.local` declarations per `fun` (slot numbering)
+- Collect all `.data` / `.struct` / `.field` / `.end` / `.global` declarations:
+  - Build the struct-sizes table and per-field byte-offset table
+  - Assign each global a byte offset in the data segment; record its name
+  - Record array globals in the packed-slice table
+- Walk instructions; record each `fun` / `label` → current byte offset (PC tracking)
 
 ### Pass 2
 
-- Emit bytecode header (magic, version, `global_size`, `instr_size`)
-- Emit handler registrations for all `@signal` functions (before user code)
-- For each instruction, emit opcode + operands, resolve names to offsets/slots/addresses
-- Append constant pool after all instructions
+- Reset PC and mode to `.code`
+- For each instruction, emit opcode + operands, resolving names to offsets / addresses
+- Directives (`.data`, `.code`, `.struct`, …) are processed for mode-switching only; data-segment
+  offsets were already fixed in pass 1
 
 ### Instruction byte sizes
 
 | Instruction | Size |
 | :--- | :---: |
 | No operand (arithmetic, stack ops) | 1 |
-| `SYSCALL` / `EVENT` | 2 (opcode + 1-byte subcode) |
+| `LOAD_GLOBAL_IND` / `STORE_GLOBAL_IND` | 1 |
+| `CALL_MODULE` | 3 (opcode + 2 × 1-byte subcodes) |
 | `JMP*` / `CALL` | 3 (opcode + 2-byte address) |
-| `PUSH` / `PUSH_FLOAT` / `PUSH_STR` | 5 (opcode + 4-byte value) |
-
-> `LOAD_LOCAL`, `STORE_LOCAL`, `LOAD_GLOBAL`, `STORE_GLOBAL`, `ADDR_GLOBAL`, and `MEM_*` are **not in v1** — sizes TBD.
+| `LOAD_GLOBAL` / `STORE_GLOBAL` | 3 (opcode + 2-byte data offset) |
+| `PUSH` / `PUSH_FLOAT` | 5 (opcode + 4-byte value) |
+| `PUSH_ADDR` / `PUSH_SLICE` / `PUSH_FIELD_OFFSET` | 5 (emitted as `PUSH` + 4-byte value) |
 
 ---
 
 ## Examples
 
 ```asm
-; Global counter incremented each tick
+; Scalar global: store and load
 
-.global score: int = 0
+.data
+.global score: i32
 
-@signal(start)
-fun init:
-    EVENT EXIT_HANDLER
+.code
+PUSH 99
+STORE_GLOBAL score
 
-@signal(tick)
-fun update:
-    LOAD_GLOBAL score
-    PUSH 1
-    ADD_INT
-    STORE_GLOBAL score
-    EVENT EXIT_HANDLER
+LOAD_GLOBAL score
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
 ```
 
 ```asm
-; Function call with named locals
+; Struct field access
 
-.global result: int = 0
+.data
+.struct Point
+.field x
+.field y
+.end
+.global pos: Point
 
-@signal(start)
-fun init:
-    PUSH 3
-    PUSH 4
-    PUSH 2
-    CALL add
-    STORE_GLOBAL result
-    EVENT EXIT_HANDLER
+.code
+; pos.y = 55
+PUSH 55
+PUSH_ADDR pos
+PUSH_FIELD_OFFSET Point y
+ADD_INT
+STORE_GLOBAL_IND
 
-fun add:
-    .local a    ; slot 0
-    .local b    ; slot 1
-    LOAD_LOCAL a
-    LOAD_LOCAL b
-    ADD_INT
-    RET
+; load pos.y
+PUSH_ADDR pos
+PUSH_FIELD_OFFSET Point y
+ADD_INT
+LOAD_GLOBAL_IND
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
 ```
 
 ```asm
-; byte[] as string buffer
+; int[] array: write arr[2] = 33, read it back
 
-.global msg: byte[16]
+.data
+.global arr: i32[4]
 
-@signal(start)
-fun init:
-    ; write 'H','i' into msg[0], msg[1]
-    ADDR_GLOBAL msg
-    PUSH 0
-    ADD_INT
-    PUSH 72         ; 'H'
-    MEM_STORE_BYTE
+.code
+PUSH 33
+PUSH_ADDR arr
+PUSH 2
+PUSH 4
+MUL_INT
+ADD_INT
+STORE_GLOBAL_IND
 
-    ADDR_GLOBAL msg
-    PUSH 1
-    ADD_INT
-    PUSH 105        ; 'i'
-    MEM_STORE_BYTE
+PUSH_ADDR arr
+PUSH 2
+PUSH 4
+MUL_INT
+ADD_INT
+LOAD_GLOBAL_IND
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+```
 
-    EVENT EXIT_HANDLER
+```asm
+; Labels and conditional jump
+
+.code
+PUSH 0
+JMP_IF_FALSE skip
+PUSH 1
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+skip:
+PUSH 99
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+```
+
+```asm
+; Backward label (count 0..9, output 10)
+
+.code
+PUSH 0
+loop:
+PUSH 1
+ADD_INT
+DUP
+PUSH 10
+CMP_LT_INT
+JMP_IF_TRUE loop
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
 ```

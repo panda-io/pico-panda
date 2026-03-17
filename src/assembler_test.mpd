@@ -31,39 +31,74 @@ fun _boot_sys(src: u8[]) bool
 
 @test
 fun test_asm_push()
-    assert(_boot_sys("PUSH 42\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(_boot_sys("""
+PUSH 42
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""))
     assert(vm.output == 42)
 
 @test
 fun test_asm_push_hex()
-    assert(_boot_sys("PUSH 0xFF\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(_boot_sys("""
+PUSH 0xFF
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""))
     assert(vm.output == 255)
 
 @test
 fun test_asm_push_negative()
-    assert(_boot_sys("PUSH -7\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(_boot_sys("""
+PUSH -7
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""))
     assert(vm.output == -7)
 
 // ── Integer arithmetic ────────────────────────────────────────────────────────
 
 @test
 fun test_asm_add()
-    assert(_boot_sys("PUSH 10\nPUSH 3\nADD_INT\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(_boot_sys("""
+PUSH 10
+PUSH 3
+ADD_INT
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""))
     assert(vm.output == 13)
 
 @test
 fun test_asm_sub()
-    assert(_boot_sys("PUSH 10\nPUSH 3\nSUB_INT\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(_boot_sys("""
+PUSH 10
+PUSH 3
+SUB_INT
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""))
     assert(vm.output == 7)
 
 @test
 fun test_asm_mul()
-    assert(_boot_sys("PUSH 6\nPUSH 7\nMUL_INT\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(_boot_sys("""
+PUSH 6
+PUSH 7
+MUL_INT
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""))
     assert(vm.output == 42)
 
 @test
 fun test_asm_neg()
-    assert(_boot_sys("PUSH 5\nNEG_INT\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(_boot_sys("""
+PUSH 5
+NEG_INT
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""))
     assert(vm.output == -5)
 
 // ── Fixed-point ───────────────────────────────────────────────────────────────
@@ -71,7 +106,14 @@ fun test_asm_neg()
 @test
 fun test_asm_push_float()
     // 2.0 * 3.0 = 6.0 → FIXED_TO_INT = 6
-    assert(_boot_sys("PUSH_FLOAT 2.0\nPUSH_FLOAT 3.0\nMUL_FIXED\nFIXED_TO_INT\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"))
+    assert(_boot_sys("""
+PUSH_FLOAT 2.0
+PUSH_FLOAT 3.0
+MUL_FIXED
+FIXED_TO_INT
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""))
     assert(vm.output == 6)
 
 // ── Labels and jumps ──────────────────────────────────────────────────────────
@@ -79,14 +121,35 @@ fun test_asm_push_float()
 @test
 fun test_asm_forward_label()
     // condition is false → jump to skip → output 99
-    val src: u8[] = "PUSH 0\nJMP_IF_FALSE skip\nPUSH 1\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\nskip:\nPUSH 99\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    val src: u8[] = """
+PUSH 0
+JMP_IF_FALSE skip
+PUSH 1
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+skip:
+PUSH 99
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""
     assert(_boot_sys(src))
     assert(vm.output == 99)
 
 @test
 fun test_asm_backward_label()
     // count from 0 up to 10, output 10
-    val src: u8[] = "PUSH 0\nloop:\nPUSH 1\nADD_INT\nDUP\nPUSH 10\nCMP_LT_INT\nJMP_IF_TRUE loop\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    val src: u8[] = """
+PUSH 0
+loop:
+PUSH 1
+ADD_INT
+DUP
+PUSH 10
+CMP_LT_INT
+JMP_IF_TRUE loop
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""
     assert(_boot_sys(src))
     assert(vm.output == 10)
 
@@ -95,7 +158,17 @@ fun test_asm_backward_label()
 @test
 fun test_asm_call_ret()
     // double(21) = 42
-    val src: u8[] = "PUSH 0\nCALL double\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\ndouble:\nPUSH 21\nPUSH 2\nMUL_INT\nRET\n"
+    val src: u8[] = """
+PUSH 0
+CALL double
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+double:
+PUSH 21
+PUSH 2
+MUL_INT
+RET
+"""
     assert(_boot_sys(src))
     assert(vm.output == 42)
 
@@ -103,7 +176,12 @@ fun test_asm_call_ret()
 
 @test
 fun test_asm_comment()
-    val src: u8[] = "; full-line comment\nPUSH 42  ; inline comment\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    val src: u8[] = """
+; full-line comment
+PUSH 42  ; inline comment
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""
     assert(_boot_sys(src))
     assert(vm.output == 42)
 
@@ -139,14 +217,34 @@ fun test_asm_error_duplicate_label()
 @test
 fun test_asm_global_load_store()
     // .data: x: i32 at addr 0; store 99, load back, print
-    val src: u8[] = ".data\n.global x: i32\n.code\nPUSH 99\nSTORE_GLOBAL x\nLOAD_GLOBAL x\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    val src: u8[] = """
+.data
+.global x: i32
+.code
+PUSH 99
+STORE_GLOBAL x
+LOAD_GLOBAL x
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""
     assert(_boot_sys(src))
     assert(vm.output == 99)
 
 @test
 fun test_asm_global_indirect()
     // push value then address, STORE_GLOBAL_IND pops addr then val
-    val src: u8[] = ".data\n.global x: i32\n.code\nPUSH 77\nPUSH_ADDR x\nSTORE_GLOBAL_IND\nPUSH_ADDR x\nLOAD_GLOBAL_IND\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    val src: u8[] = """
+.data
+.global x: i32
+.code
+PUSH 77
+PUSH_ADDR x
+STORE_GLOBAL_IND
+PUSH_ADDR x
+LOAD_GLOBAL_IND
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""
     assert(_boot_sys(src))
     assert(vm.output == 77)
 
@@ -155,7 +253,26 @@ fun test_asm_global_indirect()
 @test
 fun test_asm_struct_field()
     // struct Point { x, y }; p.y = 55; load p.y
-    val src: u8[] = ".data\n.struct Point\n.field x\n.field y\n.end\n.global p: Point\n.code\nPUSH 55\nPUSH_ADDR p\nPUSH_FIELD_OFFSET Point y\nADD_INT\nSTORE_GLOBAL_IND\nPUSH_ADDR p\nPUSH_FIELD_OFFSET Point y\nADD_INT\nLOAD_GLOBAL_IND\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    val src: u8[] = """
+.data
+.struct Point
+.field x
+.field y
+.end
+.global p: Point
+.code
+PUSH 55
+PUSH_ADDR p
+PUSH_FIELD_OFFSET Point y
+ADD_INT
+STORE_GLOBAL_IND
+PUSH_ADDR p
+PUSH_FIELD_OFFSET Point y
+ADD_INT
+LOAD_GLOBAL_IND
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""
     assert(_boot_sys(src))
     assert(vm.output == 55)
 
@@ -164,6 +281,25 @@ fun test_asm_struct_field()
 @test
 fun test_asm_array_slice()
     // arr: i32[4]; arr[2] = 33; load arr[2]
-    val src: u8[] = ".data\n.global arr: i32[4]\n.code\nPUSH 33\nPUSH_ADDR arr\nPUSH 2\nPUSH 4\nMUL_INT\nADD_INT\nSTORE_GLOBAL_IND\nPUSH_ADDR arr\nPUSH 2\nPUSH 4\nMUL_INT\nADD_INT\nLOAD_GLOBAL_IND\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    val src: u8[] = """
+.data
+.global arr: i32[4]
+.code
+PUSH 33
+PUSH_ADDR arr
+PUSH 2
+PUSH 4
+MUL_INT
+ADD_INT
+STORE_GLOBAL_IND
+PUSH_ADDR arr
+PUSH 2
+PUSH 4
+MUL_INT
+ADD_INT
+LOAD_GLOBAL_IND
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+"""
     assert(_boot_sys(src))
     assert(vm.output == 33)
