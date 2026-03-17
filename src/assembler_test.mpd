@@ -133,3 +133,37 @@ fun test_asm_error_duplicate_label()
     val ok: bool = _asm.pass1_str("main:\nPUSH 0\nmain:\nPUSH 1\n")
     assert(!ok)
     assert(_asm.error_count() > 0)
+
+// ── Global variables ──────────────────────────────────────────────────────────
+
+@test
+fun test_asm_global_load_store()
+    // .data: x: i32 at addr 0; store 99, load back, print
+    val src: u8[] = ".data\n.global x: i32\n.code\nPUSH 99\nSTORE_GLOBAL x\nLOAD_GLOBAL x\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    assert(_boot_sys(src))
+    assert(vm.output == 99)
+
+@test
+fun test_asm_global_indirect()
+    // push value then address, STORE_GLOBAL_IND pops addr then val
+    val src: u8[] = ".data\n.global x: i32\n.code\nPUSH 77\nPUSH_ADDR x\nSTORE_GLOBAL_IND\nPUSH_ADDR x\nLOAD_GLOBAL_IND\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    assert(_boot_sys(src))
+    assert(vm.output == 77)
+
+// ── Struct field access ───────────────────────────────────────────────────────
+
+@test
+fun test_asm_struct_field()
+    // struct Point { x, y }; p.y = 55; load p.y
+    val src: u8[] = ".data\n.struct Point\n.field x\n.field y\n.end\n.global p: Point\n.code\nPUSH 55\nPUSH_ADDR p\nPUSH_FIELD_OFFSET Point y\nADD_INT\nSTORE_GLOBAL_IND\nPUSH_ADDR p\nPUSH_FIELD_OFFSET Point y\nADD_INT\nLOAD_GLOBAL_IND\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    assert(_boot_sys(src))
+    assert(vm.output == 55)
+
+// ── Array slice ───────────────────────────────────────────────────────────────
+
+@test
+fun test_asm_array_slice()
+    // arr: i32[4]; arr[2] = 33; load arr[2]
+    val src: u8[] = ".data\n.global arr: i32[4]\n.code\nPUSH 33\nPUSH_ADDR arr\nPUSH 2\nPUSH 4\nMUL_INT\nADD_INT\nSTORE_GLOBAL_IND\nPUSH_ADDR arr\nPUSH 2\nPUSH 4\nMUL_INT\nADD_INT\nLOAD_GLOBAL_IND\nCALL_MODULE 0x01 0x01\nCALL_MODULE 0x02 0x02\n"
+    assert(_boot_sys(src))
+    assert(vm.output == 33)

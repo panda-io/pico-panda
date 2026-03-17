@@ -3,10 +3,15 @@
 enum OpCode
     // Immediate
     Push         = 0x01  // PUSH i32 (4-byte little-endian)
+    // Global data segment
+    LoadGlobal      = 0x10  // LOAD_GLOBAL addr(u16)  → push data[addr] as i32
+    StoreGlobal     = 0x11  // STORE_GLOBAL addr(u16) → pop i32 → data[addr]
+    LoadGlobalInd   = 0x14  // LOAD_GLOBAL_IND  → pop addr, push data[addr] as i32
+    StoreGlobalInd  = 0x15  // STORE_GLOBAL_IND → pop addr, pop val, data[addr] = val
     // Stack
-    Dup          = 0x18
-    Swap         = 0x19
-    Drop         = 0x1A
+    Dup          = 0x02
+    Swap         = 0x03
+    Drop         = 0x04
     // Integer arithmetic
     AddInt       = 0x20
     SubInt       = 0x21

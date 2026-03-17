@@ -1,6 +1,6 @@
 import vm_error::VmError
 
-const STACK_SIZE: i32 = 8
+const STACK_SIZE: i32 = 32
 const REGISTER_SIZE: i32 = 4
 
 // ── Task state ────────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import vm::vm_boot_sys
 import vm::vm_send
 import vm::vm_tick
 import vm::vm
+import opcode::*
 
 // ── Bytecode builder helpers ──────────────────────────────────────────────────
 
@@ -28,7 +29,6 @@ fun _wu16(buf: u8[], i: i32, v: i32) i32
     buf[i + 1] = u8((v >> 8) & 0xFF)
     return i + 2
 
-// Helper: load and boot system VM
 fun _boot(code: u8[])
     vm_reset()
     vm_load_sys(code)
@@ -36,16 +36,16 @@ fun _boot(code: u8[])
 
 // Emit CALL_MODULE CONSOLE PRINT_INT (3 bytes)
 fun _print_int(buf: u8[], i: i32) i32
-    i = _wb(buf, i, u8(0x70))
-    i = _wb(buf, i, u8(0x01))   // MODULE_CONSOLE
-    i = _wb(buf, i, u8(0x01))   // ConsoleCode.PrintInt
+    i = _wb(buf, i, u8(OpCode.CallModule))
+    i = _wb(buf, i, MODULE_CONSOLE)
+    i = _wb(buf, i, u8(ConsoleCode.PrintInt))
     return i
 
 // Emit CALL_MODULE EVENT EXIT_HANDLER (3 bytes)
 fun _exit_handler(buf: u8[], i: i32) i32
-    i = _wb(buf, i, u8(0x70))
-    i = _wb(buf, i, u8(0x02))   // MODULE_EVENT
-    i = _wb(buf, i, u8(0x02))   // EventCode.ExitHandler
+    i = _wb(buf, i, u8(OpCode.CallModule))
+    i = _wb(buf, i, MODULE_EVENT)
+    i = _wb(buf, i, u8(EventCode.ExitHandler))
     return i
 
 // ── PUSH ─────────────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ fun test_push()
     var raw: u8[16]
     val code: u8[] = {&raw[0], u32(16)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 42)
     i = _print_int(code, i)
     i = _exit_handler(code, i)
@@ -69,11 +69,11 @@ fun test_add_int()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 10)
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 3)
-    i = _wb(code, i, u8(0x20))
+    i = _wb(code, i, u8(OpCode.AddInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
     _boot({&raw[0], u32(i)})
@@ -84,11 +84,11 @@ fun test_sub_int()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 10)
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 3)
-    i = _wb(code, i, u8(0x21))
+    i = _wb(code, i, u8(OpCode.SubInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
     _boot({&raw[0], u32(i)})
@@ -99,11 +99,11 @@ fun test_mul_int()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 6)
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 7)
-    i = _wb(code, i, u8(0x22))
+    i = _wb(code, i, u8(OpCode.MulInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
     _boot({&raw[0], u32(i)})
@@ -114,9 +114,9 @@ fun test_neg_int()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 5)
-    i = _wb(code, i, u8(0x25))
+    i = _wb(code, i, u8(OpCode.NegInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
     _boot({&raw[0], u32(i)})
@@ -129,10 +129,10 @@ fun test_dup()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 7)
-    i = _wb(code, i, u8(0x18))
-    i = _wb(code, i, u8(0x20))
+    i = _wb(code, i, u8(OpCode.Dup))
+    i = _wb(code, i, u8(OpCode.AddInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
     _boot({&raw[0], u32(i)})
@@ -143,12 +143,12 @@ fun test_swap()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 10)
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 3)
-    i = _wb(code, i, u8(0x19))
-    i = _wb(code, i, u8(0x21))
+    i = _wb(code, i, u8(OpCode.Swap))
+    i = _wb(code, i, u8(OpCode.SubInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
     _boot({&raw[0], u32(i)})
@@ -161,11 +161,11 @@ fun test_bitwise()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 0xFF)
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 0x0F)
-    i = _wb(code, i, u8(0x29))
+    i = _wb(code, i, u8(OpCode.And))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
     _boot({&raw[0], u32(i)})
@@ -176,11 +176,11 @@ fun test_shift()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 1)
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 4)
-    i = _wb(code, i, u8(0x26))
+    i = _wb(code, i, u8(OpCode.ShlInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
     _boot({&raw[0], u32(i)})
@@ -193,11 +193,11 @@ fun test_cmp_eq()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 5)
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 5)
-    i = _wb(code, i, u8(0x50))
+    i = _wb(code, i, u8(OpCode.CmpEqInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
     _boot({&raw[0], u32(i)})
@@ -218,15 +218,15 @@ fun test_jmp_if_false()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 0)
-    i = _wb(code, i, u8(0x62))
+    i = _wb(code, i, u8(OpCode.JmpIfFalse))
     i = _wu16(code, i, 19)
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 1)
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 99)
     i = _print_int(code, i)
     i = _exit_handler(code, i)
@@ -247,17 +247,17 @@ fun test_call_ret()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 0)
-    i = _wb(code, i, u8(0x63))
+    i = _wb(code, i, u8(OpCode.Call))
     i = _wu16(code, i, 17)
     i = _print_int(code, i)
     i = _exit_handler(code, i)
     while i < 17
-        i = _wb(code, i, u8(0x1A))
-    i = _wb(code, i, u8(0x01))
+        i = _wb(code, i, u8(OpCode.Drop))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 42)
-    i = _wb(code, i, u8(0x64))
+    i = _wb(code, i, u8(OpCode.Ret))
     _boot({&raw[0], u32(i)})
     assert(vm.output == 42)
 
@@ -274,20 +274,21 @@ fun test_signal_handler()
     //  19: PUSH 77               5 bytes
     //  24: PRINT_INT             3 bytes
     //  27: EVENT EXIT_HANDLER    3 bytes
+    // Binary layout: [boot code][handler at offset 19]
     var raw: u8[64]
     val code: u8[] = {&raw[0], u32(64)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, EVENT_SYS_START)
-    i = _wb(code, i, u8(0x01))
-    i = _wi32(code, i, 19)
-    i = _wb(code, i, u8(0x70))
-    i = _wb(code, i, u8(0x02))   // MODULE_EVENT
-    i = _wb(code, i, u8(0x01))   // EventCode.CreateHandler
+    i = _wb(code, i, u8(OpCode.Push))
+    i = _wi32(code, i, 19)       // handler at code-section offset 19
+    i = _wb(code, i, u8(OpCode.CallModule))
+    i = _wb(code, i, MODULE_EVENT)
+    i = _wb(code, i, u8(EventCode.CreateHandler))
     i = _exit_handler(code, i)
-    while i < 19
-        i = _wb(code, i, u8(0x1A))
-    i = _wb(code, i, u8(0x01))
+    while i < 19                 // pad to offset 19
+        i = _wb(code, i, u8(OpCode.Drop))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 77)
     i = _print_int(code, i)
     i = _exit_handler(code, i)
@@ -306,9 +307,9 @@ fun test_int_to_fixed()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 3)
-    i = _wb(code, i, u8(0x45))
+    i = _wb(code, i, u8(OpCode.IntToFixed))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
     _boot({&raw[0], u32(i)})
@@ -320,9 +321,9 @@ fun test_fixed_to_int()
     var raw: u8[32]
     val code: u8[] = {&raw[0], u32(32)}
     var i: i32 = 0
-    i = _wb(code, i, u8(0x01))
+    i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 196608)
-    i = _wb(code, i, u8(0x46))
+    i = _wb(code, i, u8(OpCode.FixedToInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
     _boot({&raw[0], u32(i)})

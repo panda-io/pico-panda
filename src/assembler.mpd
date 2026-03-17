@@ -1,13 +1,26 @@
 // ── assembler.mpd ─────────────────────────────────────────────────────────────
 // Two-pass PPasm assembler for pico-panda bytecode.
 //
-// Supported in v1:
+//
+// Supported instructions:
 //   PUSH, PUSH_FLOAT, DUP, SWAP, DROP
 //   Integer/fixed arithmetic and comparison
 //   JMP, JMP_IF_TRUE, JMP_IF_FALSE, CALL, RET
 //   CALL_MODULE module_id(u8) sub(u8)
+//   LOAD_GLOBAL name, STORE_GLOBAL name
+//   LOAD_GLOBAL_IND, STORE_GLOBAL_IND
+//   PUSH_ADDR name             (push data-segment address of global)
+//   PUSH_SLICE name            (push packed slice: addr<<16 | count)
+//   PUSH_FIELD_OFFSET Type f   (push byte offset of field f in struct Type)
 //
-// Deferred: @signal, .global, .local, PUSH_STR
+// Data directives:
+//   .data                      (enter data section)
+//   .code                      (enter code section)
+//   .struct Name               (begin struct definition)
+//   .field fname               (declare 4-byte field)
+//   .end                       (end struct; records size)
+//   .global name: type         (allocate global; type = i32/fixed/bool/StructName/T[N])
+//
 // Multi-file: call pass1() for each file, reset_pc(), call pass2() for each file.
 
 import memory::HeapAllocator
@@ -24,62 +37,85 @@ enum AsmPass
     EMIT
 
 class Assembler()
-    var _heap:     HeapAllocator
-    var _labels:   HeapMap<i32>
-    var _opcodes:  HeapMap<i32>
-    var _bytecode: u8[MAX_BYTECODE]
-    var _line:     u8[MAX_LINE]
-    var _pc:       i32 = 0
-    var _errors:   i32 = 0
+    var _heap:            HeapAllocator
+    var _labels:          HeapMap<i32>
+    var _opcodes:         HeapMap<i32>
+    var _globals:         HeapMap<i32>      // name → data address
+    var _struct_sizes:    HeapMap<i32>      // struct name → byte size
+    var _field_offsets:   HeapMap<i32>      // "StructName.field" → byte offset
+    var _array_slices:    HeapMap<i32>      // array global name → (addr<<16)|count
+    var _bytecode:        u8[MAX_BYTECODE]
+    var _line:            u8[MAX_LINE]
+    var _key_buf:         u8[128]           // temp buffer for building field keys
+    var _cur_struct_buf:  u8[64]
+    var _cur_struct:      u8[]
+    var _pc:              i32 = 0
+    var _data_size:       i32 = 0
+    var _cur_struct_off:  i32 = 0
+    var _errors:          i32 = 0
+    var _in_data_mode:    bool = false
+    var _in_struct:       bool = false
 
     fun init()
-        _pc     = 0
-        _errors = 0
+        _pc           = 0
+        _errors       = 0
+        _data_size    = 0
+        _in_data_mode = false
+        _in_struct    = false
+        _cur_struct   = {null, 0}
         _labels.init(&_heap)
         _opcodes.init(&_heap)
-        _opcodes.set("PUSH",         0x01)
-        _opcodes.set("PUSH_FLOAT",   0x01)
-        _opcodes.set("DUP",          0x18)
-        _opcodes.set("SWAP",         0x19)
-        _opcodes.set("DROP",         0x1A)
-        _opcodes.set("ADD_INT",      0x20)
-        _opcodes.set("SUB_INT",      0x21)
-        _opcodes.set("MUL_INT",      0x22)
-        _opcodes.set("DIV_INT",      0x23)
-        _opcodes.set("MOD_INT",      0x24)
-        _opcodes.set("NEG_INT",      0x25)
-        _opcodes.set("SHL_INT",      0x26)
-        _opcodes.set("SHR_INT",      0x27)
-        _opcodes.set("SAR_INT",      0x28)
-        _opcodes.set("AND",          0x29)
-        _opcodes.set("OR",           0x2A)
-        _opcodes.set("XOR",          0x2B)
-        _opcodes.set("NOT",          0x2C)
-        _opcodes.set("ADD_FIXED",    0x40)
-        _opcodes.set("SUB_FIXED",    0x41)
-        _opcodes.set("MUL_FIXED",    0x42)
-        _opcodes.set("DIV_FIXED",    0x43)
-        _opcodes.set("NEG_FIXED",    0x44)
-        _opcodes.set("INT_TO_FIXED", 0x45)
-        _opcodes.set("FIXED_TO_INT", 0x46)
-        _opcodes.set("CMP_EQ_INT",   0x50)
-        _opcodes.set("CMP_NE_INT",   0x51)
-        _opcodes.set("CMP_LT_INT",   0x52)
-        _opcodes.set("CMP_LE_INT",   0x53)
-        _opcodes.set("CMP_GT_INT",   0x54)
-        _opcodes.set("CMP_GE_INT",   0x55)
-        _opcodes.set("CMP_EQ_FIXED", 0x56)
-        _opcodes.set("CMP_NE_FIXED", 0x57)
-        _opcodes.set("CMP_LT_FIXED", 0x58)
-        _opcodes.set("CMP_LE_FIXED", 0x59)
-        _opcodes.set("CMP_GT_FIXED", 0x5A)
-        _opcodes.set("CMP_GE_FIXED", 0x5B)
-        _opcodes.set("JMP",          0x60)
-        _opcodes.set("JMP_IF_TRUE",  0x61)
-        _opcodes.set("JMP_IF_FALSE", 0x62)
-        _opcodes.set("CALL",         0x63)
-        _opcodes.set("RET",          0x64)
-        _opcodes.set("CALL_MODULE",  0x70)
+        _globals.init(&_heap)
+        _struct_sizes.init(&_heap)
+        _field_offsets.init(&_heap)
+        _array_slices.init(&_heap)
+        _opcodes.set("PUSH",           0x01)
+        _opcodes.set("PUSH_FLOAT",     0x01)
+        _opcodes.set("LOAD_GLOBAL",    0x10)
+        _opcodes.set("STORE_GLOBAL",   0x11)
+        _opcodes.set("LOAD_GLOBAL_IND",  0x14)
+        _opcodes.set("STORE_GLOBAL_IND", 0x15)
+        _opcodes.set("DUP",            0x02)
+        _opcodes.set("SWAP",           0x03)
+        _opcodes.set("DROP",           0x04)
+        _opcodes.set("ADD_INT",        0x20)
+        _opcodes.set("SUB_INT",        0x21)
+        _opcodes.set("MUL_INT",        0x22)
+        _opcodes.set("DIV_INT",        0x23)
+        _opcodes.set("MOD_INT",        0x24)
+        _opcodes.set("NEG_INT",        0x25)
+        _opcodes.set("SHL_INT",        0x26)
+        _opcodes.set("SHR_INT",        0x27)
+        _opcodes.set("SAR_INT",        0x28)
+        _opcodes.set("AND",            0x29)
+        _opcodes.set("OR",             0x2A)
+        _opcodes.set("XOR",            0x2B)
+        _opcodes.set("NOT",            0x2C)
+        _opcodes.set("ADD_FIXED",      0x40)
+        _opcodes.set("SUB_FIXED",      0x41)
+        _opcodes.set("MUL_FIXED",      0x42)
+        _opcodes.set("DIV_FIXED",      0x43)
+        _opcodes.set("NEG_FIXED",      0x44)
+        _opcodes.set("INT_TO_FIXED",   0x45)
+        _opcodes.set("FIXED_TO_INT",   0x46)
+        _opcodes.set("CMP_EQ_INT",     0x50)
+        _opcodes.set("CMP_NE_INT",     0x51)
+        _opcodes.set("CMP_LT_INT",     0x52)
+        _opcodes.set("CMP_LE_INT",     0x53)
+        _opcodes.set("CMP_GT_INT",     0x54)
+        _opcodes.set("CMP_GE_INT",     0x55)
+        _opcodes.set("CMP_EQ_FIXED",   0x56)
+        _opcodes.set("CMP_NE_FIXED",   0x57)
+        _opcodes.set("CMP_LT_FIXED",   0x58)
+        _opcodes.set("CMP_LE_FIXED",   0x59)
+        _opcodes.set("CMP_GT_FIXED",   0x5A)
+        _opcodes.set("CMP_GE_FIXED",   0x5B)
+        _opcodes.set("JMP",            0x60)
+        _opcodes.set("JMP_IF_TRUE",    0x61)
+        _opcodes.set("JMP_IF_FALSE",   0x62)
+        _opcodes.set("CALL",           0x63)
+        _opcodes.set("RET",            0x64)
+        _opcodes.set("CALL_MODULE",    0x70)
 
     // ── Byte emit helpers ─────────────────────────────────────────────────────
 
@@ -103,20 +139,17 @@ class Assembler()
 
     // ── Line helpers ──────────────────────────────────────────────────────────
 
-    // Strip ; comment and trim whitespace.
     fun _strip_comment(s: u8[]) u8[]
         val idx: i32 = index_of(s, u8(59))      // ';'
         if idx < 0
             return trim(s)
         return trim(sub(s, u32(0), u32(idx)))
 
-    // True if line ends with ':' (label definition).
     fun _is_label(line: u8[]) bool
         if line.size() == u32(0)
             return false
         return line[line.size() - u32(1)] == u8(58)     // ':'
 
-    // Extract label name: strip optional "fun " prefix and trailing ':'.
     fun _label_name(line: u8[]) u8[]
         var s: u8[] = line
         if starts_with(s, "fun ")
@@ -130,9 +163,13 @@ class Assembler()
     fun _inst_size(m: u8[]) i32
         if equals(m, "PUSH") || equals(m, "PUSH_FLOAT")
             return 5
+        if equals(m, "PUSH_ADDR") || equals(m, "PUSH_SLICE") || equals(m, "PUSH_FIELD_OFFSET")
+            return 5    // emitted as PUSH opcode + i32
         if equals(m, "JMP") || equals(m, "JMP_IF_TRUE") || equals(m, "JMP_IF_FALSE") || equals(m, "CALL")
             return 3
         if equals(m, "CALL_MODULE")
+            return 3
+        if equals(m, "LOAD_GLOBAL") || equals(m, "STORE_GLOBAL")
             return 3
         return 1
 
@@ -144,11 +181,11 @@ class Assembler()
         while i < s.size()
             val c: u8 = s[i]
             var digit: i32 = 0
-            if c >= u8(48) && c <= u8(57)            // '0'-'9'
+            if c >= u8(48) && c <= u8(57)
                 digit = i32(c) - 48
-            else if c >= u8(65) && c <= u8(70)       // 'A'-'F'
+            else if c >= u8(65) && c <= u8(70)
                 digit = i32(c) - 55
-            else if c >= u8(97) && c <= u8(102)      // 'a'-'f'
+            else if c >= u8(97) && c <= u8(102)
                 digit = i32(c) - 87
             result = (result << 4) | digit
             i++
@@ -161,14 +198,13 @@ class Assembler()
             return -_parse_hex(sub(s, u32(3), s.size() - u32(3)))
         return parse_i32(s)
 
-    // Parse float literal as 16.16 fixed-point.  e.g. "1.5" -> 98304
     fun _parse_fixed(s: u8[]) i32
         var neg: bool = false
         var src: u8[] = s
-        if src.size() > u32(0) && src[0] == u8(45)         // '-'
+        if src.size() > u32(0) && src[0] == u8(45)
             neg = true
             src = sub(src, u32(1), src.size() - u32(1))
-        val dot: i32 = index_of(src, u8(46))                // '.'
+        val dot: i32 = index_of(src, u8(46))
         if dot < 0
             val r: i32 = parse_i32(src) << 16
             if neg
@@ -208,12 +244,105 @@ class Assembler()
             _errors++
             _emit_u16le(0)
 
+    // ── Data segment helpers ───────────────────────────────────────────────────
+
+    fun _make_field_key(struct_name: u8[], field_name: u8[]) u8[]
+        var ki: i32 = 0
+        var si: u32 = 0
+        while si < struct_name.size() && ki < 127
+            _key_buf[ki] = struct_name[si]
+            ki++
+            si++
+        _key_buf[ki] = u8(46)   // '.'
+        ki++
+        si = 0
+        while si < field_name.size() && ki < 127
+            _key_buf[ki] = field_name[si]
+            ki++
+            si++
+        return {&_key_buf[0], u32(ki)}
+
+    fun _base_type_size(t: u8[]) i32
+        if equals(t, "i32") || equals(t, "fixed") || equals(t, "bool") || equals(t, "u32") || equals(t, "u8")
+            return 4
+        if _struct_sizes.contains(t)
+            return _struct_sizes.get(t)
+        return 4    // unknown type: default 4
+
+    fun _start_struct(name: u8[])
+        _in_struct = true
+        _cur_struct_off = 0
+        var si: u32 = 0
+        while si < name.size() && si < u32(64)
+            _cur_struct_buf[si] = name[si]
+            si++
+        _cur_struct = {&_cur_struct_buf[0], si}
+
+    fun _add_field(fname: u8[])
+        if !_in_struct
+            return
+        val key: u8[] = _make_field_key(_cur_struct, fname)
+        _field_offsets.set(key, _cur_struct_off)
+        _cur_struct_off = _cur_struct_off + 4
+
+    fun _end_struct()
+        if !_in_struct
+            return
+        _struct_sizes.set(_cur_struct, _cur_struct_off)
+        _in_struct = false
+
+    fun _alloc_global(name: u8[], type_str: u8[])
+        val addr: i32 = _data_size
+        _globals.set(name, addr)
+        val bracket: i32 = index_of(type_str, u8(91))   // '['
+        if bracket >= 0
+            val close: i32 = index_of(type_str, u8(93))     // ']'
+            val dim_str: u8[] = trim(sub(type_str, u32(bracket + 1), u32(close - bracket - 1)))
+            val count: i32 = parse_i32(dim_str)
+            val base_type: u8[] = trim(sub(type_str, u32(0), u32(bracket)))
+            _array_slices.set(name, (addr << 16) | (count & 0xFFFF))
+            _data_size = _data_size + count * _base_type_size(base_type)
+        else
+            _data_size = _data_size + _base_type_size(type_str)
+
+    fun _handle_directive(line: u8[], pass: AsmPass)
+        val dir: u8[] = token(line, u32(0), u8(32))
+        val arg_pos: u32 = skip(line, dir.size(), u8(32))
+        val args: u8[] = trim(sub(line, arg_pos, line.size() - arg_pos))
+        if equals(dir, ".data")
+            _in_data_mode = true
+            _in_struct = false
+            return
+        if equals(dir, ".code")
+            _in_data_mode = false
+            _in_struct = false
+            return
+        if pass == AsmPass.EMIT
+            return
+        if equals(dir, ".struct")
+            _start_struct(args)
+        else if equals(dir, ".field")
+            _add_field(args)
+        else if equals(dir, ".end")
+            _end_struct()
+        else if equals(dir, ".global")
+            val colon: i32 = index_of(args, u8(58))   // ':'
+            if colon >= 0
+                val name: u8[] = trim(sub(args, u32(0), u32(colon)))
+                val type_str: u8[] = trim(sub(args, u32(colon) + u32(1), args.size() - u32(colon) - u32(1)))
+                _alloc_global(name, type_str)
+
     // ── Pass 1 / Pass 2 per-line processing ──────────────────────────────────
 
     fun _pass1_line(line: u8[])
         if line.size() == u32(0)
             return
-        if line[0] == u8(46) || line[0] == u8(64)      // '.' or '@'
+        if line[0] == u8(64)        // '@' → skip
+            return
+        if line[0] == u8(46)        // '.'
+            _handle_directive(line, AsmPass.SCAN)
+            return
+        if _in_data_mode
             return
         if _is_label(line)
             val name: u8[] = _label_name(line)
@@ -232,7 +361,12 @@ class Assembler()
     fun _pass2_line(line: u8[])
         if line.size() == u32(0)
             return
-        if line[0] == u8(46) || line[0] == u8(64)      // '.' or '@'
+        if line[0] == u8(64)        // '@' → skip
+            return
+        if line[0] == u8(46)        // '.'
+            _handle_directive(line, AsmPass.EMIT)
+            return
+        if _in_data_mode
             return
         if _is_label(line)
             return
@@ -243,7 +377,7 @@ class Assembler()
             _emit_u8(_opcode(m))
             _emit_i32le(_parse_int(operand))
         else if equals(m, "PUSH_FLOAT")
-            _emit_u8(_opcode(m))
+            _emit_u8(0x01)
             _emit_i32le(_parse_fixed(operand))
         else if equals(m, "JMP") || equals(m, "JMP_IF_TRUE") || equals(m, "JMP_IF_FALSE") || equals(m, "CALL")
             _emit_u8(_opcode(m))
@@ -255,6 +389,60 @@ class Assembler()
             _emit_u8(_opcode(m))
             _emit_u8(_parse_int(id_str))
             _emit_u8(_parse_int(sub_str))
+        else if equals(m, "LOAD_GLOBAL")
+            _emit_u8(0x10)
+            if _globals.contains(operand)
+                _emit_u16le(_globals.get(operand))
+            else
+                print_str("error: undefined global '")
+                print_str(operand)
+                println()
+                _errors++
+                _emit_u16le(0)
+        else if equals(m, "STORE_GLOBAL")
+            _emit_u8(0x11)
+            if _globals.contains(operand)
+                _emit_u16le(_globals.get(operand))
+            else
+                print_str("error: undefined global '")
+                print_str(operand)
+                println()
+                _errors++
+                _emit_u16le(0)
+        else if equals(m, "PUSH_ADDR")
+            _emit_u8(0x01)
+            if _globals.contains(operand)
+                _emit_i32le(_globals.get(operand))
+            else
+                print_str("error: undefined global '")
+                print_str(operand)
+                println()
+                _errors++
+                _emit_i32le(0)
+        else if equals(m, "PUSH_SLICE")
+            _emit_u8(0x01)
+            if _array_slices.contains(operand)
+                _emit_i32le(_array_slices.get(operand))
+            else
+                print_str("error: undefined array global '")
+                print_str(operand)
+                println()
+                _errors++
+                _emit_i32le(0)
+        else if equals(m, "PUSH_FIELD_OFFSET")
+            _emit_u8(0x01)
+            val type_name: u8[] = token(operand, u32(0), u8(32))
+            val fn_pos: u32 = skip(operand, type_name.size(), u8(32))
+            val field_name: u8[] = sub(operand, fn_pos, operand.size() - fn_pos)
+            val key: u8[] = _make_field_key(type_name, field_name)
+            if _field_offsets.contains(key)
+                _emit_i32le(_field_offsets.get(key))
+            else
+                print_str("error: undefined field '")
+                print_str(key)
+                println()
+                _errors++
+                _emit_i32le(0)
         else
             val op: i32 = _opcode(m)
             if op < 0
@@ -317,7 +505,9 @@ class Assembler()
     // ── Reset PC for pass 2 ───────────────────────────────────────────────────
 
     fun reset_pc()
-        _pc = 0
+        _pc           = 0
+        _in_data_mode = false
+        _in_struct    = false
 
     // ── Pass 2: emit bytecode ─────────────────────────────────────────────────
 
