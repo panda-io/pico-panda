@@ -58,8 +58,8 @@ fun _boot_sys(src: u8[]) bool
 fun test_asm_push()
     assert(_boot_sys("""
 PUSH 42
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """))
     assert(equals(_out(), "42"))
 
@@ -67,8 +67,8 @@ CALL_MODULE 0x02 0x02
 fun test_asm_push_hex()
     assert(_boot_sys("""
 PUSH 0xFF
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """))
     assert(equals(_out(), "255"))
 
@@ -76,8 +76,8 @@ CALL_MODULE 0x02 0x02
 fun test_asm_push_negative()
     assert(_boot_sys("""
 PUSH -7
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """))
     assert(equals(_out(), "-7"))
 
@@ -89,8 +89,8 @@ fun test_asm_add()
 PUSH 10
 PUSH 3
 ADD_INT
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """))
     assert(equals(_out(), "13"))
 
@@ -100,8 +100,8 @@ fun test_asm_sub()
 PUSH 10
 PUSH 3
 SUB_INT
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """))
     assert(equals(_out(), "7"))
 
@@ -111,8 +111,8 @@ fun test_asm_mul()
 PUSH 6
 PUSH 7
 MUL_INT
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """))
     assert(equals(_out(), "42"))
 
@@ -121,8 +121,8 @@ fun test_asm_neg()
     assert(_boot_sys("""
 PUSH 5
 NEG_INT
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """))
     assert(equals(_out(), "-5"))
 
@@ -136,8 +136,8 @@ PUSH_FLOAT 2.0
 PUSH_FLOAT 3.0
 MUL_FIXED
 FIXED_TO_INT
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """))
     assert(equals(_out(), "6"))
 
@@ -150,12 +150,12 @@ fun test_asm_forward_label()
 PUSH 0
 JMP_IF_FALSE skip
 PUSH 1
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 skip:
 PUSH 99
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """
     assert(_boot_sys(src))
     assert(equals(_out(), "99"))
@@ -172,8 +172,8 @@ DUP
 PUSH 10
 CMP_LT_INT
 JMP_IF_TRUE loop
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """
     assert(_boot_sys(src))
     assert(equals(_out(), "10"))
@@ -186,8 +186,8 @@ fun test_asm_call_ret()
     val src: u8[] = """
 PUSH 0
 CALL double
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 double:
 PUSH 21
 PUSH 2
@@ -204,8 +204,8 @@ fun test_asm_comment()
     val src: u8[] = """
 ; full-line comment
 PUSH 42  ; inline comment
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """
     assert(_boot_sys(src))
     assert(equals(_out(), "42"))
@@ -249,8 +249,8 @@ fun test_asm_global_load_store()
 PUSH 99
 STORE_GLOBAL x
 LOAD_GLOBAL x
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """
     assert(_boot_sys(src))
     assert(equals(_out(), "99"))
@@ -267,8 +267,8 @@ PUSH_ADDR x
 STORE_GLOBAL_IND
 PUSH_ADDR x
 LOAD_GLOBAL_IND
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """
     assert(_boot_sys(src))
     assert(equals(_out(), "77"))
@@ -295,8 +295,8 @@ PUSH_ADDR p
 PUSH_FIELD_OFFSET Point y
 ADD_INT
 LOAD_GLOBAL_IND
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """
     assert(_boot_sys(src))
     assert(equals(_out(), "55"))
@@ -310,8 +310,8 @@ fun test_asm_fun_args()
 PUSH 10
 PUSH 20
 CALL add
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 fun add:
     .local a
     .local b
@@ -328,8 +328,8 @@ fun test_asm_store_local()
     assert(_boot_sys("""
 PUSH 7
 CALL dbl
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 fun dbl:
     .local x
     LOAD_LOCAL x
@@ -347,8 +347,8 @@ fun test_asm_callee_var()
     assert(_boot_sys("""
 PUSH -7
 CALL abs_fn
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 fun abs_fn:
     .local x
     .var   result
@@ -392,8 +392,8 @@ PUSH 4
 MUL_INT
 ADD_INT
 LOAD_GLOBAL_IND
-CALL_MODULE 0x01 0x01
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_INT
+CALL_MODULE SIGNAL EXIT_HANDLER
 """
     assert(_boot_sys(src))
     assert(equals(_out(), "33"))
@@ -404,8 +404,8 @@ CALL_MODULE 0x02 0x02
 fun test_asm_push_str()
     assert(_boot_sys("""
 PUSH_STR "hello"
-CALL_MODULE 0x01 0x03
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_STR
+CALL_MODULE SIGNAL EXIT_HANDLER
 """))
     assert(equals(_out(), "hello"))
 
@@ -414,7 +414,7 @@ fun test_asm_push_str_spaces()
     // string with spaces and a comment that should NOT be stripped
     assert(_boot_sys("""
 PUSH_STR "foo bar"
-CALL_MODULE 0x01 0x03
-CALL_MODULE 0x02 0x02
+CALL_MODULE CONSOLE PRINT_STR
+CALL_MODULE SIGNAL EXIT_HANDLER
 """))
     assert(equals(_out(), "foo bar"))

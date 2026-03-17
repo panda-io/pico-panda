@@ -48,6 +48,8 @@ class Assembler()
     var _locals:          HeapMap<i32>      // local name → slot (rebuilt per fun)
     var _fun_argc:        HeapMap<i32>      // fun name → argc (pass 1 → pass 2)
     var _fun_nvars:       HeapMap<i32>      // fun name → callee var count (pass 1 → pass 2)
+    var _modules:         HeapMap<i32>      // module name → module id (e.g. "CONSOLE" → 1)
+    var _subops:          HeapMap<i32>      // "MODULE.SUBOP" → sub-op code
     var _bytecode:        u8[MAX_BYTECODE]
     var _line:            u8[MAX_LINE]
     var _key_buf:         u8[128]           // temp buffer for building field keys
@@ -85,6 +87,17 @@ class Assembler()
         _locals.init(&_heap)
         _fun_argc.init(&_heap)
         _fun_nvars.init(&_heap)
+        _modules.init(&_heap)
+        _subops.init(&_heap)
+        register_module("CONSOLE", u8(0x01))
+        register_subop("CONSOLE", "PRINT_INT",      u8(0x01))
+        register_subop("CONSOLE", "PRINT_FIXED",    u8(0x02))
+        register_subop("CONSOLE", "PRINT_STR",      u8(0x03))
+        register_module("SIGNAL",  u8(0x02))
+        register_subop("SIGNAL",  "CREATE_HANDLER", u8(0x01))
+        register_subop("SIGNAL",  "EXIT_HANDLER",   u8(0x02))
+        register_subop("SIGNAL",  "HANDLER_SLEEP",  u8(0x03))
+        register_subop("SIGNAL",  "SEND_SIGNAL",    u8(0x04))
         _local_idx = 0
         _var_idx   = 0
         _cur_fun   = {null, 0}
@@ -496,8 +509,15 @@ class Assembler()
             val sub_pos: u32 = skip(operand, id_str.size(), u8(32))
             val sub_str: u8[] = sub(operand, sub_pos, operand.size() - sub_pos)
             _emit_u8(_opcode(m))
-            _emit_u8(_parse_int(id_str))
-            _emit_u8(_parse_int(sub_str))
+            if _modules.contains(id_str)
+                _emit_u8(u8(_modules.get(id_str)))
+            else
+                _emit_u8(u8(_parse_int(id_str)))
+            val key: u8[] = _make_field_key(id_str, sub_str)
+            if _subops.contains(key)
+                _emit_u8(u8(_subops.get(key)))
+            else
+                _emit_u8(u8(_parse_int(sub_str)))
         else if equals(m, "LOAD_GLOBAL")
             _emit_u8(0x12)
             if _globals.contains(operand)
@@ -660,3 +680,10 @@ class Assembler()
 
     fun error_count() i32
         return _errors
+
+    fun register_module(name: u8[], id: u8)
+        _modules.set(name, i32(id))
+
+    fun register_subop(module: u8[], name: u8[], code: u8)
+        val key: u8[] = _make_field_key(module, name)
+        _subops.set(key, i32(code))
