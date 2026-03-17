@@ -64,7 +64,7 @@ enum OpCode
 // ── Built-in module IDs ───────────────────────────────────────────────────────
 
 const MODULE_CONSOLE: u8 = 0x01
-const MODULE_EVENT:   u8 = 0x02
+const MODULE_SIGNAL:   u8 = 0x02
 
 // ── Console sub-codes (MODULE_CONSOLE) ───────────────────────────────────────
 
@@ -73,7 +73,7 @@ enum ConsoleCode
     PrintFixed   = 0x02
     PrintStr     = 0x03
 
-// ── Event sub-codes (MODULE_EVENT) ────────────────────────────────────────────
+// ── Signal module sub-codes (MODULE_SIGNAL) ────────────────────────────────────────────
 
 enum EventCode
     CreateHandler = 0x01

@@ -2,7 +2,7 @@ import task::Task
 import task::TaskState
 import task::REGISTER_SIZE
 import handler::Handler
-import event::*
+import signal::*
 import config::*
 import opcode::*
 import console::*
@@ -34,7 +34,7 @@ class VM()
     var _app_handlers:         Handler[]
 
     // ── Shared event queue (ring buffer) ─────────────────────────────────────
-    var _events:               Event[VM_MAX_EVENTS]
+    var _events:               Signal[VM_MAX_EVENTS]
     var _ev_head:              i32
     var _ev_tail:              i32
     var _ev_size:              i32
@@ -81,7 +81,7 @@ class VM()
         for &task in _tasks
             task.active = false
         register_module(MODULE_CONSOLE, _console_handler)
-        register_module(MODULE_EVENT, _event_handler)
+        register_module(MODULE_SIGNAL, _signal_module)
 
     // ── Module handler support ────────────────────────────────────────────────
 
@@ -113,7 +113,7 @@ class VM()
         if task == null
             _on_error(VmError.SPAWN_FAILED)
             return
-        emit_event(EVENT_SYS_START, 0, 0, 0, 0)
+        emit_event(SIGNAL_SYS_START, 0, 0, 0, 0)
         _run_execute(task, Code.Sys)
         if task.state == TaskState.FINISHED
             task.active = false
@@ -125,7 +125,7 @@ class VM()
         if task == null
             _on_error(VmError.SPAWN_FAILED)
             return
-        emit_event(EVENT_APP_START, 0, 0, 0, 0)
+        emit_event(SIGNAL_APP_START, 0, 0, 0, 0)
         _run_execute(task, Code.App)
         if task.state == TaskState.FINISHED
             task.active = false
@@ -150,7 +150,7 @@ class VM()
 
     fun tick(delta: fixed)
         // 0. Sent tick event
-        emit_event(EVENT_TICK, i32(delta), 0, 0, 0)
+        emit_event(SIGNAL_TICK, i32(delta), 0, 0, 0)
 
         // 1. Wake sleeping tasks
         for task: &Task in _sys_tasks
@@ -160,7 +160,7 @@ class VM()
 
         // 2. Dispatch queued events to both contexts
         while _ev_size > 0
-            val ev: &Event = &_events[_ev_head]
+            val ev: &Signal = &_events[_ev_head]
             _ev_head = (_ev_head + 1) % VM_MAX_EVENTS
             _ev_size--
             _dispatch_event(ev)
@@ -246,24 +246,24 @@ class VM()
     // ── Private: event helpers ────────────────────────────────────────────────
 
     @inline
-    fun _save_event_data(event: &Event, task: &Task)
+    fun _save_event_data(event: &Signal, task: &Task)
         for i: i32 in range(0, REGISTER_SIZE)
             event.regs[i] = task.regs[i]
 
     @inline
-    fun _load_event_data(event: &Event, task: &Task)
+    fun _load_event_data(event: &Signal, task: &Task)
         for i: i32 in range(0, REGISTER_SIZE)
             task.regs[i] = event.regs[i]
 
     @inline
-    fun _dispatch_event(event: &Event)
+    fun _dispatch_event(event: &Signal)
         for handler: &Handler in _sys_handlers
             _process_event(event, handler, Code.Sys)
         for handler: &Handler in _app_handlers
             _process_event(event, handler, Code.App)
 
     @inline
-    fun _process_event(event: &Event, handler: &Handler, which: Code)
+    fun _process_event(event: &Signal, handler: &Handler, which: Code)
         // ignore handlers if its task is suspended (sleeping) or not active
         if handler.active && handler.event_id == event.id && handler.task == null
             val task: &Task = _spawn_task(handler.addr, _ctx_tasks(which))
@@ -579,7 +579,7 @@ fun _console_handler(sub: u8, task: &Task)
         _:
             vm.on_module_error(task)
 
-fun _event_handler(sub: u8, task: &Task)
+fun _signal_module(sub: u8, task: &Task)
     match i32(sub)
         EventCode.CreateHandler:
             val ha: i32 = task.pop()

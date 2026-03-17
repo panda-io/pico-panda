@@ -122,16 +122,17 @@ Signals are identified by a 32-bit integer (`event_id`) in bytecode.
 
 A small set of signals are pre-assigned fixed IDs. Both the assembler and the host C code use these constants:
 
-| ID | Name | Description |
+| ID | Constant | Description |
 | :---: | :--- | :--- |
-| 1 | `start` | Fired once on VM startup, before the first tick |
-| 2 | `tick` | Fired every tick by the host driver |
+| 1 | `SIGNAL_SYS_START` | Fired once on system VM startup, before the first tick |
+| 2 | `SIGNAL_APP_START` | Fired once on app VM startup, before the first tick |
+| 3 | `SIGNAL_TICK` | Fired every tick by the host driver |
 
 The host dispatches them by constant value:
 
 ```c
-vm_send(vm, SIGNAL_START, NULL);   // SIGNAL_START = 1
-vm_send(vm, SIGNAL_TICK,  NULL);   // SIGNAL_TICK  = 2
+vm_send(vm, SIGNAL_SYS_START, NULL);   // SIGNAL_SYS_START = 1
+vm_send(vm, SIGNAL_TICK,      NULL);   // SIGNAL_TICK       = 3
 ```
 
 ### User-defined signals
@@ -257,16 +258,16 @@ Push 1 (true) or 0 (false). Pop two values; second-from-top compared to top.
 | 0x02 | `PRINT_FIXED` | pop fixed | Print fixed-point as decimal |
 | 0x03 | `PRINT_STR` | pop addr | Print string from constant pool at addr |
 
-### Events
+### Signal module (`MODULE_SIGNAL = 0x02`)
 
-`EVENT <subcode>` — opcode 0x71 followed by 1-byte subcode.
+`CALL_MODULE 0x02 <subcode>` — or the planned `SIGNAL <subcode>` assembler mnemonic.
 
 | Subcode | Name | Stack effect | Description |
 | :---: | :--- | :--- | :--- |
-| 0x01 | `CREATE_HANDLER` | pop addr, pop event_id | Register handler at addr for event_id (i32) |
+| 0x01 | `CREATE_HANDLER` | pop addr, pop signal_id | Register handler at addr for signal_id (i32) |
 | 0x02 | `EXIT_HANDLER` | — | Mark current task as FINISHED |
 | 0x03 | `HANDLER_SLEEP` | pop ticks | Suspend task for N ticks |
-| 0x04 | `SEND` | pop event_id | Queue event (event_id is i32) |
+| 0x04 | `SEND` | pop signal_id | Queue signal (signal_id is i32) |
 
 ---
 

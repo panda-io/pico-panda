@@ -142,11 +142,11 @@ Placed before a `fun` declaration to register that function as a handler for the
 ```asm
 @signal(start)
 fun init:
-    EVENT EXIT_HANDLER
+    SIGNAL EXIT_HANDLER
 
 @signal(tick)
 fun update:
-    EVENT EXIT_HANDLER
+    SIGNAL EXIT_HANDLER
 ```
 
 ---
@@ -276,11 +276,11 @@ RET
 ; Module calls
 CALL_MODULE module_id sub_id    ; e.g. CALL_MODULE 0x01 0x01
 
-; Events (planned)
-EVENT CREATE_HANDLER
-EVENT EXIT_HANDLER
-EVENT HANDLER_SLEEP
-EVENT SEND
+; Signal module (planned)
+SIGNAL CREATE_HANDLER
+SIGNAL EXIT_HANDLER
+SIGNAL HANDLER_SLEEP
+SIGNAL SEND
 ```
 
 ---

@@ -1,5 +1,5 @@
 import test::assert
-import event::EVENT_SYS_START
+import signal::SIGNAL_SYS_START
 import vm::vm_reset
 import vm::vm_load_sys
 import vm::vm_boot_sys
@@ -44,7 +44,7 @@ fun _print_int(buf: u8[], i: i32) i32
 // Emit CALL_MODULE EVENT EXIT_HANDLER (3 bytes)
 fun _exit_handler(buf: u8[], i: i32) i32
     i = _wb(buf, i, u8(OpCode.CallModule))
-    i = _wb(buf, i, MODULE_EVENT)
+    i = _wb(buf, i, MODULE_SIGNAL)
     i = _wb(buf, i, u8(EventCode.ExitHandler))
     return i
 
@@ -265,7 +265,7 @@ fun test_call_ret()
 @test
 fun test_signal_handler()
     // Boot code (addr 0):
-    //   0: PUSH EVENT_SYS_START  5 bytes
+    //   0: PUSH SIGNAL_SYS_START  5 bytes
     //   5: PUSH 19               5 bytes
     //  10: EVENT CREATE_HANDLER  3 bytes
     //  13: EVENT EXIT_HANDLER    3 bytes
@@ -278,11 +278,11 @@ fun test_signal_handler()
     val code: u8[] = {&raw[0], u32(64)}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
-    i = _wi32(code, i, EVENT_SYS_START)
+    i = _wi32(code, i, SIGNAL_SYS_START)
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 19)       // handler at code-section offset 19
     i = _wb(code, i, u8(OpCode.CallModule))
-    i = _wb(code, i, MODULE_EVENT)
+    i = _wb(code, i, MODULE_SIGNAL)
     i = _wb(code, i, u8(EventCode.CreateHandler))
     i = _exit_handler(code, i)
     while i < 19                 // pad to offset 19

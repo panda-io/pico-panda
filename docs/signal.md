@@ -89,30 +89,30 @@ Given the annotations above, the compiler generates the entry point automaticall
 ```asm
 ; generated — do not write this by hand
     PUSH player_update
-    PUSH EVENT_TICK
-    EVENT CREATE_HANDLER
+    PUSH SIGNAL_TICK
+    SIGNAL CREATE_HANDLER
 
     PUSH enemy_update
-    PUSH EVENT_TICK
-    EVENT CREATE_HANDLER
+    PUSH SIGNAL_TICK
+    SIGNAL CREATE_HANDLER
 
     PUSH draw
-    PUSH EVENT_TICK
-    EVENT CREATE_HANDLER
+    PUSH SIGNAL_TICK
+    SIGNAL CREATE_HANDLER
 
     PUSH on_jump
-    PUSH EVENT_JUMP
-    EVENT CREATE_HANDLER
+    PUSH SIGNAL_JUMP
+    SIGNAL CREATE_HANDLER
 
     PUSH on_jump_sfx
-    PUSH EVENT_JUMP
-    EVENT CREATE_HANDLER
+    PUSH SIGNAL_JUMP
+    SIGNAL CREATE_HANDLER
 
     PUSH on_start
-    PUSH EVENT_START
-    EVENT CREATE_HANDLER
+    PUSH SIGNAL_SYS_START
+    SIGNAL CREATE_HANDLER
 
-    EVENT EXIT_HANDLER  ; main task done
+    SIGNAL EXIT_HANDLER  ; main task done
 ```
 
 The programmer writes none of this.
@@ -165,14 +165,14 @@ Prefer periodic logic in a `@signal(tick)` handler with a counter in global stat
 loop:
     // do work
     PUSH 60
-    EVENT HANDLER_SLEEP   // blocks a task slot for 60 ticks
+    SIGNAL HANDLER_SLEEP   // blocks a task slot for 60 ticks
     JMP loop
 
 ; preferred
 @signal(tick)
 fun on_tick()
     // do work every tick — no sleeping, no wasted slot
-    EVENT EXIT_HANDLER
+    SIGNAL EXIT_HANDLER
 ```
 
 `HANDLER_SLEEP` remains available for one-shot delays where spawning a
