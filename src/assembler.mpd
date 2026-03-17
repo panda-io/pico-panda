@@ -55,6 +55,9 @@ class Assembler()
     var _cur_struct:      u8[]
     var _cur_fun_buf:     u8[64]
     var _cur_fun:         u8[]
+    var _pool:            u8[MAX_BYTECODE]
+    var _pool_size:       i32 = 0
+    var _instr_size:      i32 = 0
     var _local_idx:       i32
     var _var_idx:         i32
     var _pc:              i32 = 0
@@ -68,6 +71,8 @@ class Assembler()
         _pc           = 0
         _errors       = 0
         _data_size    = 0
+        _pool_size    = 0
+        _instr_size   = 0
         _in_data_mode = false
         _in_struct    = false
         _cur_struct   = {null, 0}
@@ -156,10 +161,50 @@ class Assembler()
     // ── Line helpers ──────────────────────────────────────────────────────────
 
     fun _strip_comment(s: u8[]) u8[]
-        val idx: i32 = index_of(s, u8(59))      // ';'
-        if idx < 0
-            return trim(s)
-        return trim(sub(s, u32(0), u32(idx)))
+        var i: u32 = 0
+        var in_str: bool = false
+        while i < s.size()
+            val c: u8 = s[i]
+            if in_str
+                if c == u8(92)       // '\' → skip next char
+                    i++
+                else if c == u8(34)  // '"' → end of string
+                    in_str = false
+            else
+                if c == u8(59)       // ';' → comment start
+                    return trim(sub(s, u32(0), i))
+                if c == u8(34)       // '"' → start of string
+                    in_str = true
+            i++
+        return trim(s)
+
+    fun _append_str_to_pool(s: u8[]) i32
+        // s is the raw operand "..." including surrounding double-quotes
+        // returns the number of bytes written to the pool
+        if s.size() < u32(2)
+            return 0
+        var n: i32 = 0
+        var i: u32 = 1                     // skip opening '"'
+        val end: u32 = s.size() - u32(1)   // stop before closing '"'
+        while i < end
+            val c: u8 = s[i]
+            if c == u8(92)                 // '\'
+                i++
+                if i < end
+                    val esc: u8 = s[i]
+                    var out: u8 = esc
+                    if esc == u8(110)      // 'n' → newline
+                        out = u8(10)
+                    else if esc == u8(116) // 't' → tab
+                        out = u8(9)
+                    _pool[_pool_size + n] = out
+                    n++
+            else
+                _pool[_pool_size + n] = c
+                n++
+            i++
+        _pool_size = _pool_size + n
+        return n
 
     fun _is_label(line: u8[]) bool
         if line.size() == u32(0)
@@ -177,7 +222,7 @@ class Assembler()
     // ── Instruction size (pass 1 PC tracking) ─────────────────────────────────
 
     fun _inst_size(m: u8[]) i32
-        if equals(m, "PUSH") || equals(m, "PUSH_FLOAT")
+        if equals(m, "PUSH") || equals(m, "PUSH_FLOAT") || equals(m, "PUSH_STR")
             return 5
         if equals(m, "PUSH_ADDR") || equals(m, "PUSH_SLICE") || equals(m, "PUSH_FIELD_OFFSET")
             return 5    // emitted as PUSH opcode + i32
@@ -507,6 +552,11 @@ class Assembler()
                 println()
                 _errors++
                 _emit_i32le(0)
+        else if equals(m, "PUSH_STR")
+            val pool_off: i32 = _pool_size
+            val str_len: i32 = _append_str_to_pool(operand)
+            _emit_u8(0x01)
+            _emit_i32le((str_len << 16) | (_instr_size + pool_off))
         else if equals(m, "LOAD_LOCAL")
             _emit_u8(0x10)
             if _locals.contains(operand)
@@ -581,6 +631,8 @@ class Assembler()
     // ── Reset PC for pass 2 ───────────────────────────────────────────────────
 
     fun reset_pc()
+        _instr_size   = _pc
+        _pool_size    = 0
         _pc           = 0
         _in_data_mode = false
         _in_struct    = false
@@ -600,7 +652,11 @@ class Assembler()
     // ── Output ────────────────────────────────────────────────────────────────
 
     fun get_bytecode() u8[]
-        return {&_bytecode[0], u32(_pc)}
+        var i: i32 = 0
+        while i < _pool_size
+            _bytecode[_instr_size + i] = _pool[i]
+            i++
+        return {&_bytecode[0], u32(_instr_size + _pool_size)}
 
     fun error_count() i32
         return _errors

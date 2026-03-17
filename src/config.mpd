@@ -6,8 +6,8 @@ const MAX_CODE:   i32 = 65536
 const MAX_MEMORY: i32 = 65536
 
 // Compile-time array sizes for the VM class
-const VM_MAX_FRAMES:   i32 = 8
-const VM_MAX_EVENTS:   i32 = 32
+const VM_MAX_FRAMES:    i32 = 8
+const VM_MAX_SIGNALS:   i32 = 32
 
 // System VM runtime limits (lightweight: boot, I/O, scheduler)
 const SYS_MEMORY_SIZE:  i32 = 1024

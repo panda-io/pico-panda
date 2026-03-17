@@ -5,7 +5,7 @@ import handler::Handler
 import signal::*
 import config::*
 import opcode::*
-import console::*
+import console
 import vm_error::VmError
 
 enum Code
@@ -33,14 +33,11 @@ class VM()
     var _app_tasks:            Task[]
     var _app_handlers:         Handler[]
 
-    // ── Shared event queue (ring buffer) ─────────────────────────────────────
-    var _events:               Signal[VM_MAX_EVENTS]
-    var _ev_head:              i32
-    var _ev_tail:              i32
-    var _ev_size:              i32
-
-    // ── Output (readable from tests / host) ──────────────────────────────────
-    var output:                i32
+    // ── Shared signal queue (ring buffer) ────────────────────────────────────
+    var _signals:              Signal[VM_MAX_SIGNALS]
+    var _sig_head:             i32
+    var _sig_tail:             i32
+    var _sig_size:             i32
 
     // ── Module registry ───────────────────────────────────────────────────────
     var _module_slots:         u8[MAX_MODULE_ID]     // module_id → slot+1 (0 = empty)
@@ -66,10 +63,9 @@ class VM()
             _sys_data_buf[i] = u8(0)
         for i: i32 in range(0, APP_MEMORY_SIZE)
             _app_data_buf[i] = u8(0)
-        _ev_head          = 0
-        _ev_tail          = 0
-        _ev_size          = 0
-        output            = 0
+        _sig_head         = 0
+        _sig_tail         = 0
+        _sig_size         = 0
         _last_error       = VmError.NONE
         _module_count     = 0
         _current_code     = Code.Sys
@@ -113,7 +109,7 @@ class VM()
         if task == null
             _on_error(VmError.SPAWN_FAILED)
             return
-        emit_event(SIGNAL_SYS_START, 0, 0, 0, 0)
+        emit_signal(SIGNAL_SYS_START, 0, 0, 0, 0)
         _run_execute(task, Code.Sys)
         if task.state == TaskState.FINISHED
             task.active = false
@@ -125,32 +121,32 @@ class VM()
         if task == null
             _on_error(VmError.SPAWN_FAILED)
             return
-        emit_event(SIGNAL_APP_START, 0, 0, 0, 0)
+        emit_signal(SIGNAL_APP_START, 0, 0, 0, 0)
         _run_execute(task, Code.App)
         if task.state == TaskState.FINISHED
             task.active = false
         if _last_error != VmError.NONE
             _on_error(_last_error)
 
-    // ── Event bus ─────────────────────────────────────────────────────────────
+    // ── Signal queue ─────────────────────────────────────────────────────────
 
-    fun emit_event(id: i32, param0: i32, param1: i32, param2: i32, param3: i32)
-        if _ev_size >= VM_MAX_EVENTS
-            _on_error(VmError.EVENT_FULL)
+    fun emit_signal(id: i32, param0: i32, param1: i32, param2: i32, param3: i32)
+        if _sig_size >= VM_MAX_SIGNALS
+            _on_error(VmError.SIGNAL_FULL)
             return
-        _events[_ev_tail].id = id
-        _events[_ev_tail].regs[0] = param0
-        _events[_ev_tail].regs[1] = param1
-        _events[_ev_tail].regs[2] = param2
-        _events[_ev_tail].regs[3] = param3
-        _ev_tail = (_ev_tail + 1) % VM_MAX_EVENTS
-        _ev_size++
+        _signals[_sig_tail].id = id
+        _signals[_sig_tail].regs[0] = param0
+        _signals[_sig_tail].regs[1] = param1
+        _signals[_sig_tail].regs[2] = param2
+        _signals[_sig_tail].regs[3] = param3
+        _sig_tail = (_sig_tail + 1) % VM_MAX_SIGNALS
+        _sig_size++
 
     // ── Tick ─────────────────────────────────────────────────────────────────
 
     fun tick(delta: fixed)
         // 0. Sent tick event
-        emit_event(SIGNAL_TICK, i32(delta), 0, 0, 0)
+        emit_signal(SIGNAL_TICK, i32(delta), 0, 0, 0)
 
         // 1. Wake sleeping tasks
         for task: &Task in _sys_tasks
@@ -158,12 +154,12 @@ class VM()
         for task: &Task in _app_tasks
             _task_wake(task)
 
-        // 2. Dispatch queued events to both contexts
-        while _ev_size > 0
-            val ev: &Signal = &_events[_ev_head]
-            _ev_head = (_ev_head + 1) % VM_MAX_EVENTS
-            _ev_size--
-            _dispatch_event(ev)
+        // 2. Dispatch queued signals
+        while _sig_size > 0
+            val sig: &Signal = &_signals[_sig_head]
+            _sig_head = (_sig_head + 1) % VM_MAX_SIGNALS
+            _sig_size--
+            _dispatch_signal(sig)
 
         // 3. Run active tasks
         for task: &Task in _sys_tasks
@@ -243,32 +239,32 @@ class VM()
                 return handler
         return null
 
-    // ── Private: event helpers ────────────────────────────────────────────────
+    // ── Private: signal helpers ───────────────────────────────────────────────
 
     @inline
-    fun _save_event_data(event: &Signal, task: &Task)
+    fun _save_signal_data(sig: &Signal, task: &Task)
         for i: i32 in range(0, REGISTER_SIZE)
-            event.regs[i] = task.regs[i]
+            sig.regs[i] = task.regs[i]
 
     @inline
-    fun _load_event_data(event: &Signal, task: &Task)
+    fun _load_signal_data(sig: &Signal, task: &Task)
         for i: i32 in range(0, REGISTER_SIZE)
-            task.regs[i] = event.regs[i]
+            task.regs[i] = sig.regs[i]
 
     @inline
-    fun _dispatch_event(event: &Signal)
+    fun _dispatch_signal(sig: &Signal)
         for handler: &Handler in _sys_handlers
-            _process_event(event, handler, Code.Sys)
+            _process_signal(sig, handler, Code.Sys)
         for handler: &Handler in _app_handlers
-            _process_event(event, handler, Code.App)
+            _process_signal(sig, handler, Code.App)
 
     @inline
-    fun _process_event(event: &Signal, handler: &Handler, which: Code)
+    fun _process_signal(sig: &Signal, handler: &Handler, which: Code)
         // ignore handlers if its task is suspended (sleeping) or not active
-        if handler.active && handler.event_id == event.id && handler.task == null
+        if handler.active && handler.signal_id == sig.id && handler.task == null
             val task: &Task = _spawn_task(handler.addr, _ctx_tasks(which))
             if task != null
-                _load_event_data(event, task)
+                _load_signal_data(sig, task)
                 _run_execute(task, which)
                 if _last_error != VmError.NONE
                     _on_error(_last_error)
@@ -280,15 +276,15 @@ class VM()
                     handler.task = task
 
     @inline
-    fun _send_event(id: i32, task: &Task)
-        if _ev_size >= VM_MAX_EVENTS
-            _last_error = VmError.EVENT_FULL
+    fun _send_signal(id: i32, task: &Task)
+        if _sig_size >= VM_MAX_SIGNALS
+            _last_error = VmError.SIGNAL_FULL
             task.state = TaskState.FINISHED
             return
-        _events[_ev_tail].id = id
-        _save_event_data(&_events[_ev_tail], task)
-        _ev_tail = (_ev_tail + 1) % VM_MAX_EVENTS
-        _ev_size++
+        _signals[_sig_tail].id = id
+        _save_signal_data(&_signals[_sig_tail], task)
+        _sig_tail = (_sig_tail + 1) % VM_MAX_SIGNALS
+        _sig_size++
 
     // ── Private: read/write helpers ───────────────────────────────────────────
 
@@ -310,25 +306,25 @@ class VM()
     // ── Error handling ────────────────────────────────────────────────────────
 
     fun _print_error_msg(code: VmError)
-        print_str("[vm] error: ")
+        console.print_str("[vm] error: ")
         match code
             VmError.STACK_OVERFLOW:
-                print_str("stack overflow")
+                console.print_str("stack overflow")
             VmError.STACK_UNDERFLOW:
-                print_str("stack underflow")
+                console.print_str("stack underflow")
             VmError.FRAME_EXCEEDED:
-                print_str("frame exceeded")
+                console.print_str("frame exceeded")
             VmError.BAD_OPCODE:
-                print_str("bad opcode")
+                console.print_str("bad opcode")
             VmError.BAD_MODULE:
-                print_str("bad module")
+                console.print_str("bad module")
             VmError.SPAWN_FAILED:
-                print_str("spawn failed")
-            VmError.EVENT_FULL:
-                print_str("event queue full")
+                console.print_str("spawn failed")
+            VmError.SIGNAL_FULL:
+                console.print_str("signal queue full")
             _:
-                print_str("unknown")
-        println()
+                console.print_str("unknown")
+        console.println()
 
     fun _boot_sys_no_err()
         val task: &Task = _spawn_task(0, _sys_tasks)
@@ -573,27 +569,36 @@ var vm: VM
 fun _console_handler(sub: u8, task: &Task)
     match i32(sub)
         ConsoleCode.PrintInt:
-            vm.output = task.pop()
+            console.print_i32(task.pop())
         ConsoleCode.PrintFixed:
-            vm.output = task.pop()
+            console.print_i32(task.pop())
+        ConsoleCode.PrintStr:
+            val packed: i32 = task.pop()
+            val str_addr: i32 = packed & 0xFFFF
+            val str_len: i32 = (packed >> 16) & 0xFFFF
+            val code: u8[] = vm._code(vm._current_code)
+            var i: i32 = 0
+            while i < str_len
+                console.write_byte(code[str_addr + i])
+                i++
         _:
             vm.on_module_error(task)
 
 fun _signal_module(sub: u8, task: &Task)
     match i32(sub)
-        EventCode.CreateHandler:
+        SignalCode.CreateHandler:
             val ha: i32 = task.pop()
             val he: i32 = task.pop()
             val handler: &Handler = vm._spawn_handler()
             if handler != null
                 handler.init(he, ha)
-        EventCode.ExitHandler:
+        SignalCode.ExitHandler:
             task.state = TaskState.FINISHED
-        EventCode.HandlerSleep:
+        SignalCode.HandlerSleep:
             task.sleep = task.pop()
             task.state = TaskState.SLEEPING
-        EventCode.Send:
-            vm._send_event(task.pop(), task)
+        SignalCode.SendSignal:
+            vm._send_signal(task.pop(), task)
         _:
             vm.on_module_error(task)
 
@@ -615,7 +620,7 @@ fun vm_boot_app()
     vm.boot_app()
 
 fun vm_send(id: i32, param0: i32, param1: i32, param2: i32, param3: i32)
-    vm.emit_event(id, param0, param1, param2, param3)
+    vm.emit_signal(id, param0, param1, param2, param3)
 
 fun vm_tick(delta: fixed)
     vm.tick(delta)

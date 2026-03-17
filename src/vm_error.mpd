@@ -8,4 +8,4 @@ enum VmError
     BAD_OPCODE
     BAD_MODULE
     SPAWN_FAILED
-    EVENT_FULL
+    SIGNAL_FULL

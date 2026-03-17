@@ -4,7 +4,29 @@ import vm::vm_reset
 import vm::vm_load_sys
 import vm::vm_boot_sys
 import vm::vm_tick
-import vm::vm
+import console
+import string::equals
+
+// ── Output capture ────────────────────────────────────────────────────────────
+
+var _out_buf: u8[256]
+var _out_len: i32 = 0
+
+fun _cap(b: u8)
+    if _out_len < 256
+        _out_buf[_out_len] = b
+        _out_len++
+
+fun _out() u8[]
+    return {&_out_buf[0], u32(_out_len)}
+
+@include("stdio.h")
+
+@extern("putchar({b})")
+fun _putchar(b: u8)
+
+fun _stdout_write(b: u8)
+    _putchar(b)
 
 // ── Shared assembler instance ─────────────────────────────────────────────────
 
@@ -20,11 +42,14 @@ fun _build(src: u8[]) bool
     return _asm.pass2_str(src)
 
 fun _boot_sys(src: u8[]) bool
+    _out_len = 0
+    console.init(_cap)
     if !_build(src)
         return false
     vm_reset()
     vm_load_sys(_asm.get_bytecode())
     vm_boot_sys()
+    console.init(_stdout_write)
     return true
 
 // ── Basic push and output ─────────────────────────────────────────────────────
@@ -36,7 +61,7 @@ PUSH 42
 CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """))
-    assert(vm.output == 42)
+    assert(equals(_out(), "42"))
 
 @test
 fun test_asm_push_hex()
@@ -45,7 +70,7 @@ PUSH 0xFF
 CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """))
-    assert(vm.output == 255)
+    assert(equals(_out(), "255"))
 
 @test
 fun test_asm_push_negative()
@@ -54,7 +79,7 @@ PUSH -7
 CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """))
-    assert(vm.output == -7)
+    assert(equals(_out(), "-7"))
 
 // ── Integer arithmetic ────────────────────────────────────────────────────────
 
@@ -67,7 +92,7 @@ ADD_INT
 CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """))
-    assert(vm.output == 13)
+    assert(equals(_out(), "13"))
 
 @test
 fun test_asm_sub()
@@ -78,7 +103,7 @@ SUB_INT
 CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """))
-    assert(vm.output == 7)
+    assert(equals(_out(), "7"))
 
 @test
 fun test_asm_mul()
@@ -89,7 +114,7 @@ MUL_INT
 CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """))
-    assert(vm.output == 42)
+    assert(equals(_out(), "42"))
 
 @test
 fun test_asm_neg()
@@ -99,7 +124,7 @@ NEG_INT
 CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """))
-    assert(vm.output == -5)
+    assert(equals(_out(), "-5"))
 
 // ── Fixed-point ───────────────────────────────────────────────────────────────
 
@@ -114,7 +139,7 @@ FIXED_TO_INT
 CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """))
-    assert(vm.output == 6)
+    assert(equals(_out(), "6"))
 
 // ── Labels and jumps ──────────────────────────────────────────────────────────
 
@@ -133,7 +158,7 @@ CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """
     assert(_boot_sys(src))
-    assert(vm.output == 99)
+    assert(equals(_out(), "99"))
 
 @test
 fun test_asm_backward_label()
@@ -151,7 +176,7 @@ CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """
     assert(_boot_sys(src))
-    assert(vm.output == 10)
+    assert(equals(_out(), "10"))
 
 // ── CALL / RET ────────────────────────────────────────────────────────────────
 
@@ -170,7 +195,7 @@ MUL_INT
 RET
 """
     assert(_boot_sys(src))
-    assert(vm.output == 42)
+    assert(equals(_out(), "42"))
 
 // ── Comment stripping ─────────────────────────────────────────────────────────
 
@@ -183,7 +208,7 @@ CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """
     assert(_boot_sys(src))
-    assert(vm.output == 42)
+    assert(equals(_out(), "42"))
 
 // ── Error cases ───────────────────────────────────────────────────────────────
 
@@ -228,7 +253,7 @@ CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """
     assert(_boot_sys(src))
-    assert(vm.output == 99)
+    assert(equals(_out(), "99"))
 
 @test
 fun test_asm_global_indirect()
@@ -246,7 +271,7 @@ CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """
     assert(_boot_sys(src))
-    assert(vm.output == 77)
+    assert(equals(_out(), "77"))
 
 // ── Struct field access ───────────────────────────────────────────────────────
 
@@ -274,7 +299,7 @@ CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """
     assert(_boot_sys(src))
-    assert(vm.output == 55)
+    assert(equals(_out(), "55"))
 
 // ── fun / .local / LOAD_LOCAL / STORE_LOCAL ───────────────────────────────────
 
@@ -295,7 +320,7 @@ fun add:
     ADD_INT
     RET
 """))
-    assert(vm.output == 30)
+    assert(equals(_out(), "30"))
 
 @test
 fun test_asm_store_local()
@@ -314,7 +339,7 @@ fun dbl:
     LOAD_LOCAL x
     RET
 """))
-    assert(vm.output == 14)
+    assert(equals(_out(), "14"))
 
 @test
 fun test_asm_callee_var()
@@ -343,7 +368,7 @@ abs_done:
     LOAD_LOCAL result
     RET
 """))
-    assert(vm.output == 7)
+    assert(equals(_out(), "7"))
 
 // ── Array slice ───────────────────────────────────────────────────────────────
 
@@ -371,4 +396,25 @@ CALL_MODULE 0x01 0x01
 CALL_MODULE 0x02 0x02
 """
     assert(_boot_sys(src))
-    assert(vm.output == 33)
+    assert(equals(_out(), "33"))
+
+// ── PUSH_STR / PRINT_STR ──────────────────────────────────────────────────────
+
+@test
+fun test_asm_push_str()
+    assert(_boot_sys("""
+PUSH_STR "hello"
+CALL_MODULE 0x01 0x03
+CALL_MODULE 0x02 0x02
+"""))
+    assert(equals(_out(), "hello"))
+
+@test
+fun test_asm_push_str_spaces()
+    // string with spaces and a comment that should NOT be stripped
+    assert(_boot_sys("""
+PUSH_STR "foo bar"
+CALL_MODULE 0x01 0x03
+CALL_MODULE 0x02 0x02
+"""))
+    assert(equals(_out(), "foo bar"))

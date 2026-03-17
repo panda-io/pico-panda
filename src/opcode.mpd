@@ -75,8 +75,8 @@ enum ConsoleCode
 
 // ── Signal module sub-codes (MODULE_SIGNAL) ────────────────────────────────────────────
 
-enum EventCode
+enum SignalCode
     CreateHandler = 0x01
     ExitHandler   = 0x02
     HandlerSleep  = 0x03
-    Send          = 0x04
+    SendSignal    = 0x04
