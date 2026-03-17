@@ -1,5 +1,5 @@
-import vm_error::VmError
-import config::VM_MAX_FRAMES
+import vm.vm_error::VmError
+import vm.config::VM_MAX_FRAMES
 
 const STACK_SIZE: i32 = 256
 const REGISTER_SIZE: i32 = 4

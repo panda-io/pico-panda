@@ -1,9 +1,9 @@
 import test::assert
-import assembler::Assembler
-import vm::vm_reset
-import vm::vm_load_sys
-import vm::vm_boot_sys
-import vm::vm_tick
+import assembler.assembler::Assembler
+import vm.vm::vm_reset
+import vm.vm::vm_load_sys
+import vm.vm::vm_boot_sys
+import vm.vm::vm_tick
 import console
 import string::equals
 

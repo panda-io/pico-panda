@@ -1,4 +1,4 @@
-import task::REGISTER_SIZE
+import vm.task::REGISTER_SIZE
 
 // ── System signal IDs (shared between assembler and host) ─────────────────────
 const SIGNAL_SYS_START: i32 = 1

@@ -28,7 +28,7 @@ import collection::HeapMap
 import file::*
 import string::*
 import console::*
-import opcode::OpCode
+import vm.opcode::OpCode
 
 const MAX_BYTECODE: i32 = 65536
 const MAX_LINE:     i32 = 1024

@@ -1,12 +1,12 @@
-import task::Task
-import task::TaskState
-import task::REGISTER_SIZE
-import handler::Handler
-import signal::*
-import config::*
-import opcode::*
+import vm.task::Task
+import vm.task::TaskState
+import vm.task::REGISTER_SIZE
+import vm.handler::Handler
+import vm.signal::*
+import vm.config::*
+import vm.opcode::*
 import console
-import vm_error::VmError
+import vm.vm_error::VmError
 
 enum Code
     Sys

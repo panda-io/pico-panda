@@ -1,13 +1,13 @@
 import test::assert
-import signal::SIGNAL_SYS_START
-import vm::vm_reset
-import vm::vm_load_sys
-import vm::vm_boot_sys
-import vm::vm_send
-import vm::vm_tick
+import vm.signal::SIGNAL_SYS_START
+import vm.vm::vm_reset
+import vm.vm::vm_load_sys
+import vm.vm::vm_boot_sys
+import vm.vm::vm_send
+import vm.vm::vm_tick
 import console
 import string::equals
-import opcode::*
+import vm.opcode::*
 
 // ── Output capture ────────────────────────────────────────────────────────────
 
