@@ -3,15 +3,18 @@
 enum OpCode
     // Immediate
     Push         = 0x01  // PUSH i32 (4-byte little-endian)
-    // Global data segment
-    LoadGlobal      = 0x10  // LOAD_GLOBAL addr(u16)  → push data[addr] as i32
-    StoreGlobal     = 0x11  // STORE_GLOBAL addr(u16) → pop i32 → data[addr]
-    LoadGlobalInd   = 0x14  // LOAD_GLOBAL_IND  → pop addr, push data[addr] as i32
-    StoreGlobalInd  = 0x15  // STORE_GLOBAL_IND → pop addr, pop val, data[addr] = val
     // Stack
     Dup          = 0x02
     Swap         = 0x03
     Drop         = 0x04
+    // Local data segment
+    LoadLocal       = 0x10  // LOAD_LOCAL slot(u8)    → push stack[fp + slot]
+    StoreLocal      = 0x11  // STORE_LOCAL slot(u8)   → stack[fp + slot] = pop()
+    // Global data segment
+    LoadGlobal      = 0x12  // LOAD_GLOBAL addr(u16)  → push data[addr] as i32
+    StoreGlobal     = 0x13  // STORE_GLOBAL addr(u16) → pop i32 → data[addr]
+    LoadGlobalInd   = 0x14  // LOAD_GLOBAL_IND  → pop addr, push data[addr] as i32
+    StoreGlobalInd  = 0x15  // STORE_GLOBAL_IND → pop addr, pop val, data[addr] = val
     // Integer arithmetic
     AddInt       = 0x20
     SubInt       = 0x21
@@ -52,8 +55,9 @@ enum OpCode
     Jmp          = 0x60  // JMP addr (u16)
     JmpIfTrue    = 0x61  // JMP_IF_TRUE addr (u16)
     JmpIfFalse   = 0x62  // JMP_IF_FALSE addr (u16)
-    Call         = 0x63  // CALL addr (u16); args are dropped, no locals
-    Ret          = 0x64  // RET
+    Call         = 0x63  // CALL addr (u16); args stay on stack; callee uses ENTER/LOAD_LOCAL
+    Enter        = 0x64  // ENTER argc(u8) → fp = sp - argc; sp_stack[frame-1] = fp
+    Ret          = 0x65  // RET
     // Module dispatch
     CallModule   = 0x70  // CALL_MODULE module_id(u8) sub(u8)
 

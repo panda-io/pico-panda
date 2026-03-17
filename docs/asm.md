@@ -113,10 +113,16 @@ so that `.global` and `PUSH_FIELD_OFFSET` can use the struct by name.
 
 Structs must be declared before any `.global` that uses them.
 
-### `.local name` *(planned)*
+### `.local name`
 
-Declares a named alias for the next available local slot within the current `fun`.
+Declares a named alias for the next available argument slot within the current `fun`.
 No type — slots are untyped 4-byte cells. Names are resolved to slot indices at assemble time.
+
+Slots are numbered from 0 in declaration order and correspond to the arguments the caller pushed
+left-to-right. Slot 0 = first argument, slot 1 = second argument, etc.
+
+`.local` declarations must appear at the head of a `fun` block before any instructions.
+The assembler counts them and auto-emits `ENTER N` at the `fun` label position.
 
 ---
 
@@ -249,11 +255,15 @@ FIXED_TO_INT
 CMP_EQ_INT  CMP_NE_INT  CMP_LT_INT  CMP_LE_INT  CMP_GT_INT  CMP_GE_INT
 CMP_EQ_FIXED  CMP_NE_FIXED  CMP_LT_FIXED  CMP_LE_FIXED  CMP_GT_FIXED  CMP_GE_FIXED
 
+; Local variable access (relative to frame pointer)
+LOAD_LOCAL name     ; push stack[fp + slot]  (slot resolved from .local declaration)
+STORE_LOCAL name    ; stack[fp + slot] = pop()
+
 ; Control flow
 JMP label
 JMP_IF_TRUE  label
 JMP_IF_FALSE label
-CALL  label
+CALL  label         ; saves fp/ret/sp; no arg count pushed
 RET
 
 ; Module calls
@@ -270,7 +280,7 @@ EVENT SEND
 
 ## Label and Fun Rules
 
-- `fun name:` declares a function — creates a label and opens a `.local` scope *(planned)*
+- `fun name:` declares a function — creates a label, opens a `.local` scope, and auto-emits `ENTER N`
 - Plain `label:` is valid for internal jump targets
 - Labels must be unique within a file
 - Labels may be forward-referenced (resolved in pass 2)
@@ -278,24 +288,39 @@ EVENT SEND
 
 ---
 
-## Call Convention in ASM *(planned)*
+## Call Convention in ASM
 
-Caller pushes arguments left-to-right, then pushes the count, then calls:
+Caller pushes arguments left-to-right, then calls. No arg count is pushed.
+The callee uses `fun label:` + `.local` declarations; the assembler auto-emits `ENTER N`.
 
 ```asm
 PUSH 10         ; arg 0
 PUSH 20         ; arg 1
-PUSH 2          ; arg count
-CALL add
+CALL add        ; saves fp/ret/sp, sets fp = sp, jumps to add
 
-fun add:
+fun add:        ; assembler auto-emits: ENTER 2  (fp = sp - 2)
     .local a    ; slot 0 (arg 0)
     .local b    ; slot 1 (arg 1)
-    LOAD_LOCAL a
-    LOAD_LOCAL b
+    LOAD_LOCAL a    ; push stack[fp + 0]
+    LOAD_LOCAL b    ; push stack[fp + 1]
     ADD_INT
-    RET
+    RET             ; sp restored to pre-call base; retval pushed on top
 ```
+
+Stack trace:
+
+```
+Before CALL:   [..., 10, 20]       sp = base+2
+After CALL:    unchanged            fp_stack[0]=fp, ret_stack[0]=pc, sp_stack[0]=base+2
+After ENTER 2: fp = base+2-2=base  sp_stack[0] overridden to base
+LOAD_LOCAL 0:  push stack[base+0]  = 10
+LOAD_LOCAL 1:  push stack[base+1]  = 20
+ADD_INT        push 30             sp = base+1
+RET:           retval=30; sp=base; push retval → [..., 30]
+```
+
+Callee temporaries use the eval stack normally (PUSH / arithmetic / DROP).
+`STORE_LOCAL` can be used to mutate an argument slot in place.
 
 ---
 
@@ -418,6 +443,8 @@ Input is split into lines before pass 1. File and string sources are identical a
 | `CALL_MODULE` | 3 (opcode + 2 × 1-byte subcodes) |
 | `JMP*` / `CALL` | 3 (opcode + 2-byte address) |
 | `LOAD_GLOBAL` / `STORE_GLOBAL` | 3 (opcode + 2-byte data offset) |
+| `LOAD_LOCAL` / `STORE_LOCAL` | 2 (opcode + 1-byte slot index) |
+| `ENTER` (auto-emitted by `fun`) | 2 (opcode + 1-byte argc) |
 | `PUSH` / `PUSH_FLOAT` | 5 (opcode + 4-byte value) |
 | `PUSH_ADDR` / `PUSH_SLICE` / `PUSH_FIELD_OFFSET` | 5 (emitted as `PUSH` + 4-byte value) |
 

@@ -276,6 +276,46 @@ CALL_MODULE 0x02 0x02
     assert(_boot_sys(src))
     assert(vm.output == 55)
 
+// ── fun / .local / LOAD_LOCAL / STORE_LOCAL ───────────────────────────────────
+
+@test
+fun test_asm_fun_args()
+    // add(10, 20) = 30
+    assert(_boot_sys("""
+PUSH 10
+PUSH 20
+CALL add
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+fun add:
+    .local a
+    .local b
+    LOAD_LOCAL a
+    LOAD_LOCAL b
+    ADD_INT
+    RET
+"""))
+    assert(vm.output == 30)
+
+@test
+fun test_asm_store_local()
+    // dbl(7) = 14 (doubles arg via STORE_LOCAL)
+    assert(_boot_sys("""
+PUSH 7
+CALL dbl
+CALL_MODULE 0x01 0x01
+CALL_MODULE 0x02 0x02
+fun dbl:
+    .local x
+    LOAD_LOCAL x
+    PUSH 2
+    MUL_INT
+    STORE_LOCAL x
+    LOAD_LOCAL x
+    RET
+"""))
+    assert(vm.output == 14)
+
 // ── Array slice ───────────────────────────────────────────────────────────────
 
 @test

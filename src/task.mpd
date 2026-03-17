@@ -1,6 +1,7 @@
 import vm_error::VmError
+import config::VM_MAX_FRAMES
 
-const STACK_SIZE: i32 = 32
+const STACK_SIZE: i32 = 256
 const REGISTER_SIZE: i32 = 4
 
 // ── Task state ────────────────────────────────────────────────────────────────
@@ -13,20 +14,25 @@ enum TaskState
 // ── Task ──────────────────────────────────────────────────────────────────────
 
 class Task()
-    var pc:     i32
-    var sp:     i32
-    var frame:  i32
-    var state:  TaskState
-    var sleep:  i32
-    var active: bool
-    var error:  VmError
-    var stack:  i32[STACK_SIZE]      // evaluation stack (STACK_SIZE slots)
-    var regs:   i32[REGISTER_SIZE]
+    var pc:        i32
+    var sp:        i32
+    var fp:        i32                     // current frame base (index into stack[])
+    var frame:     i32
+    var state:     TaskState
+    var sleep:     i32
+    var active:    bool
+    var error:     VmError
+    var stack:     i32[STACK_SIZE]         // evaluation stack (STACK_SIZE slots)
+    var fp_stack:  i32[VM_MAX_FRAMES]      // saved fp per call depth
+    var ret_stack: i32[VM_MAX_FRAMES]      // saved return PC per call depth
+    var sp_stack:  i32[VM_MAX_FRAMES]      // cleanup sp per call depth (set by ENTER)
+    var regs:      i32[REGISTER_SIZE]
 
     @inline
     fun reset(addr: i32)
         pc     = addr
         sp     = 0
+        fp     = 0
         frame  = 0
         state  = TaskState.RUNNING
         sleep  = 0

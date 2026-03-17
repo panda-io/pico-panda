@@ -478,24 +478,36 @@ class VM()
                 OpCode.Call:
                     val addr: i32 = _read_u16(code, pc)
                     pc += 2
+                    task.fp_stack[task.frame]  = task.fp
+                    task.ret_stack[task.frame] = pc
+                    task.sp_stack[task.frame]  = task.sp
                     task.frame = task.frame + 1
                     if task.frame >= VM_MAX_FRAMES
                         _last_error = VmError.FRAME_EXCEEDED
                         task.state = TaskState.FINISHED
                     else
-                        val argc: i32 = task.pop()
-                        var j: i32 = 0
-                        while j < argc
-                            task.pop()
-                            j++
-                        task.push(pc)
+                        task.fp = task.sp
                         pc = addr
                 OpCode.Ret:
-                    val retval:  i32 = task.pop()
-                    val retaddr: i32 = task.pop()
+                    val retval: i32 = task.pop()
                     task.frame = task.frame - 1
-                    pc = retaddr
+                    task.sp = task.sp_stack[task.frame]
+                    task.fp = task.fp_stack[task.frame]
+                    pc      = task.ret_stack[task.frame]
                     task.push(retval)
+                OpCode.Enter:
+                    val argc: i32 = i32(code[pc])
+                    pc++
+                    task.fp = task.fp - argc
+                    task.sp_stack[task.frame - 1] = task.fp
+                OpCode.LoadLocal:
+                    val slot: i32 = i32(code[pc])
+                    pc++
+                    task.push(task.stack[task.fp + slot])
+                OpCode.StoreLocal:
+                    val slot: i32 = i32(code[pc])
+                    pc++
+                    task.stack[task.fp + slot] = task.pop()
                 OpCode.CallModule:
                     val mod_id: u8 = code[pc]
                     pc++

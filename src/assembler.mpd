@@ -28,6 +28,7 @@ import collection::HeapMap
 import file::*
 import string::*
 import console::*
+import opcode::OpCode
 
 const MAX_BYTECODE: i32 = 65536
 const MAX_LINE:     i32 = 1024
@@ -44,11 +45,16 @@ class Assembler()
     var _struct_sizes:    HeapMap<i32>      // struct name → byte size
     var _field_offsets:   HeapMap<i32>      // "StructName.field" → byte offset
     var _array_slices:    HeapMap<i32>      // array global name → (addr<<16)|count
+    var _locals:          HeapMap<i32>      // local name → slot (rebuilt per fun)
+    var _fun_argc:        HeapMap<i32>      // fun name → argc (pass 1 → pass 2)
     var _bytecode:        u8[MAX_BYTECODE]
     var _line:            u8[MAX_LINE]
     var _key_buf:         u8[128]           // temp buffer for building field keys
     var _cur_struct_buf:  u8[64]
     var _cur_struct:      u8[]
+    var _cur_fun_buf:     u8[64]
+    var _cur_fun:         u8[]
+    var _local_idx:       i32
     var _pc:              i32 = 0
     var _data_size:       i32 = 0
     var _cur_struct_off:  i32 = 0
@@ -69,53 +75,59 @@ class Assembler()
         _struct_sizes.init(&_heap)
         _field_offsets.init(&_heap)
         _array_slices.init(&_heap)
-        _opcodes.set("PUSH",           0x01)
-        _opcodes.set("PUSH_FLOAT",     0x01)
-        _opcodes.set("LOAD_GLOBAL",    0x10)
-        _opcodes.set("STORE_GLOBAL",   0x11)
-        _opcodes.set("LOAD_GLOBAL_IND",  0x14)
-        _opcodes.set("STORE_GLOBAL_IND", 0x15)
-        _opcodes.set("DUP",            0x02)
-        _opcodes.set("SWAP",           0x03)
-        _opcodes.set("DROP",           0x04)
-        _opcodes.set("ADD_INT",        0x20)
-        _opcodes.set("SUB_INT",        0x21)
-        _opcodes.set("MUL_INT",        0x22)
-        _opcodes.set("DIV_INT",        0x23)
-        _opcodes.set("MOD_INT",        0x24)
-        _opcodes.set("NEG_INT",        0x25)
-        _opcodes.set("SHL_INT",        0x26)
-        _opcodes.set("SHR_INT",        0x27)
-        _opcodes.set("SAR_INT",        0x28)
-        _opcodes.set("AND",            0x29)
-        _opcodes.set("OR",             0x2A)
-        _opcodes.set("XOR",            0x2B)
-        _opcodes.set("NOT",            0x2C)
-        _opcodes.set("ADD_FIXED",      0x40)
-        _opcodes.set("SUB_FIXED",      0x41)
-        _opcodes.set("MUL_FIXED",      0x42)
-        _opcodes.set("DIV_FIXED",      0x43)
-        _opcodes.set("NEG_FIXED",      0x44)
-        _opcodes.set("INT_TO_FIXED",   0x45)
-        _opcodes.set("FIXED_TO_INT",   0x46)
-        _opcodes.set("CMP_EQ_INT",     0x50)
-        _opcodes.set("CMP_NE_INT",     0x51)
-        _opcodes.set("CMP_LT_INT",     0x52)
-        _opcodes.set("CMP_LE_INT",     0x53)
-        _opcodes.set("CMP_GT_INT",     0x54)
-        _opcodes.set("CMP_GE_INT",     0x55)
-        _opcodes.set("CMP_EQ_FIXED",   0x56)
-        _opcodes.set("CMP_NE_FIXED",   0x57)
-        _opcodes.set("CMP_LT_FIXED",   0x58)
-        _opcodes.set("CMP_LE_FIXED",   0x59)
-        _opcodes.set("CMP_GT_FIXED",   0x5A)
-        _opcodes.set("CMP_GE_FIXED",   0x5B)
-        _opcodes.set("JMP",            0x60)
-        _opcodes.set("JMP_IF_TRUE",    0x61)
-        _opcodes.set("JMP_IF_FALSE",   0x62)
-        _opcodes.set("CALL",           0x63)
-        _opcodes.set("RET",            0x64)
-        _opcodes.set("CALL_MODULE",    0x70)
+        _locals.init(&_heap)
+        _fun_argc.init(&_heap)
+        _local_idx = 0
+        _cur_fun   = {null, 0}
+        _opcodes.set("PUSH",             i32(OpCode.Push))
+        _opcodes.set("PUSH_FLOAT",       i32(OpCode.Push))
+        _opcodes.set("LOAD_LOCAL",       i32(OpCode.LoadLocal))
+        _opcodes.set("STORE_LOCAL",      i32(OpCode.StoreLocal))
+        _opcodes.set("LOAD_GLOBAL",      i32(OpCode.LoadGlobal))
+        _opcodes.set("STORE_GLOBAL",     i32(OpCode.StoreGlobal))
+        _opcodes.set("LOAD_GLOBAL_IND",  i32(OpCode.LoadGlobalInd))
+        _opcodes.set("STORE_GLOBAL_IND", i32(OpCode.StoreGlobalInd))
+        _opcodes.set("DUP",              i32(OpCode.Dup))
+        _opcodes.set("SWAP",             i32(OpCode.Swap))
+        _opcodes.set("DROP",             i32(OpCode.Drop))
+        _opcodes.set("ADD_INT",          i32(OpCode.AddInt))
+        _opcodes.set("SUB_INT",          i32(OpCode.SubInt))
+        _opcodes.set("MUL_INT",          i32(OpCode.MulInt))
+        _opcodes.set("DIV_INT",          i32(OpCode.DivInt))
+        _opcodes.set("MOD_INT",          i32(OpCode.ModInt))
+        _opcodes.set("NEG_INT",          i32(OpCode.NegInt))
+        _opcodes.set("SHL_INT",          i32(OpCode.ShlInt))
+        _opcodes.set("SHR_INT",          i32(OpCode.ShrInt))
+        _opcodes.set("SAR_INT",          i32(OpCode.SarInt))
+        _opcodes.set("AND",              i32(OpCode.And))
+        _opcodes.set("OR",               i32(OpCode.Or))
+        _opcodes.set("XOR",              i32(OpCode.Xor))
+        _opcodes.set("NOT",              i32(OpCode.Not))
+        _opcodes.set("ADD_FIXED",        i32(OpCode.AddFixed))
+        _opcodes.set("SUB_FIXED",        i32(OpCode.SubFixed))
+        _opcodes.set("MUL_FIXED",        i32(OpCode.MulFixed))
+        _opcodes.set("DIV_FIXED",        i32(OpCode.DivFixed))
+        _opcodes.set("NEG_FIXED",        i32(OpCode.NegFixed))
+        _opcodes.set("INT_TO_FIXED",     i32(OpCode.IntToFixed))
+        _opcodes.set("FIXED_TO_INT",     i32(OpCode.FixedToInt))
+        _opcodes.set("CMP_EQ_INT",       i32(OpCode.CmpEqInt))
+        _opcodes.set("CMP_NE_INT",       i32(OpCode.CmpNeInt))
+        _opcodes.set("CMP_LT_INT",       i32(OpCode.CmpLtInt))
+        _opcodes.set("CMP_LE_INT",       i32(OpCode.CmpLeInt))
+        _opcodes.set("CMP_GT_INT",       i32(OpCode.CmpGtInt))
+        _opcodes.set("CMP_GE_INT",       i32(OpCode.CmpGeInt))
+        _opcodes.set("CMP_EQ_FIXED",     i32(OpCode.CmpEqFixed))
+        _opcodes.set("CMP_NE_FIXED",     i32(OpCode.CmpNeFixed))
+        _opcodes.set("CMP_LT_FIXED",     i32(OpCode.CmpLtFixed))
+        _opcodes.set("CMP_LE_FIXED",     i32(OpCode.CmpLeFixed))
+        _opcodes.set("CMP_GT_FIXED",     i32(OpCode.CmpGtFixed))
+        _opcodes.set("CMP_GE_FIXED",     i32(OpCode.CmpGeFixed))
+        _opcodes.set("JMP",              i32(OpCode.Jmp))
+        _opcodes.set("JMP_IF_TRUE",      i32(OpCode.JmpIfTrue))
+        _opcodes.set("JMP_IF_FALSE",     i32(OpCode.JmpIfFalse))
+        _opcodes.set("CALL",             i32(OpCode.Call))
+        _opcodes.set("RET",              i32(OpCode.Ret))
+        _opcodes.set("CALL_MODULE",      i32(OpCode.CallModule))
 
     // ── Byte emit helpers ─────────────────────────────────────────────────────
 
@@ -171,6 +183,8 @@ class Assembler()
             return 3
         if equals(m, "LOAD_GLOBAL") || equals(m, "STORE_GLOBAL")
             return 3
+        if equals(m, "LOAD_LOCAL") || equals(m, "STORE_LOCAL")
+            return 2
         return 1
 
     // ── Hex / integer / fixed-point parsing ───────────────────────────────────
@@ -317,6 +331,12 @@ class Assembler()
             _in_data_mode = false
             _in_struct = false
             return
+        if equals(dir, ".local")
+            _locals.set(args, _local_idx)
+            if pass == AsmPass.SCAN
+                _fun_argc.set(_cur_fun, _local_idx + 1)
+            _local_idx++
+            return
         if pass == AsmPass.EMIT
             return
         if equals(dir, ".struct")
@@ -354,6 +374,15 @@ class Assembler()
                     _errors++
                 else
                     _labels.set(name, _pc)
+            if starts_with(line, "fun ")
+                _pc = _pc + 2
+                _local_idx = 0
+                _locals.init(&_heap)
+                var ni: u32 = 0
+                while ni < name.size() && ni < u32(64)
+                    _cur_fun_buf[ni] = name[ni]
+                    ni++
+                _cur_fun = {&_cur_fun_buf[0], ni}
         else
             val m: u8[] = token(line, u32(0), u8(32))
             _pc = _pc + _inst_size(m)
@@ -369,6 +398,20 @@ class Assembler()
         if _in_data_mode
             return
         if _is_label(line)
+            if starts_with(line, "fun ")
+                _local_idx = 0
+                _locals.init(&_heap)
+                val name: u8[] = _label_name(line)
+                var ni: u32 = 0
+                while ni < name.size() && ni < u32(64)
+                    _cur_fun_buf[ni] = name[ni]
+                    ni++
+                _cur_fun = {&_cur_fun_buf[0], ni}
+                var argc: i32 = 0
+                if _fun_argc.contains(_cur_fun)
+                    argc = _fun_argc.get(_cur_fun)
+                _emit_u8(0x64)
+                _emit_u8(u8(argc))
             return
         val m: u8[] = token(line, u32(0), u8(32))
         val op_pos: u32 = skip(line, m.size(), u8(32))
@@ -390,7 +433,7 @@ class Assembler()
             _emit_u8(_parse_int(id_str))
             _emit_u8(_parse_int(sub_str))
         else if equals(m, "LOAD_GLOBAL")
-            _emit_u8(0x10)
+            _emit_u8(0x12)
             if _globals.contains(operand)
                 _emit_u16le(_globals.get(operand))
             else
@@ -400,7 +443,7 @@ class Assembler()
                 _errors++
                 _emit_u16le(0)
         else if equals(m, "STORE_GLOBAL")
-            _emit_u8(0x11)
+            _emit_u8(0x13)
             if _globals.contains(operand)
                 _emit_u16le(_globals.get(operand))
             else
@@ -443,6 +486,18 @@ class Assembler()
                 println()
                 _errors++
                 _emit_i32le(0)
+        else if equals(m, "LOAD_LOCAL")
+            _emit_u8(0x10)
+            if _locals.contains(operand)
+                _emit_u8(u8(_locals.get(operand)))
+            else
+                _emit_u8(u8(_parse_int(operand)))
+        else if equals(m, "STORE_LOCAL")
+            _emit_u8(0x11)
+            if _locals.contains(operand)
+                _emit_u8(u8(_locals.get(operand)))
+            else
+                _emit_u8(u8(_parse_int(operand)))
         else
             val op: i32 = _opcode(m)
             if op < 0
@@ -508,6 +563,9 @@ class Assembler()
         _pc           = 0
         _in_data_mode = false
         _in_struct    = false
+        _local_idx    = 0
+        _cur_fun      = {null, 0}
+        _locals.init(&_heap)
 
     // ── Pass 2: emit bytecode ─────────────────────────────────────────────────
 
