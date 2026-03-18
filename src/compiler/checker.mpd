@@ -235,6 +235,8 @@ class Checker()
         else if k == i32(StmtKind.BREAK) || k == i32(StmtKind.CONTINUE)
             if _in_loop == 0
                 _error("break/continue outside loop")
+        else if k == i32(StmtKind.ASM_STMT)
+            return  // raw asm — no type checking
         else if k == i32(StmtKind.EXPR_STMT)
             _check_expr(_nodes.d0(h))
 

@@ -1,0 +1,45 @@
+// ── boot.ppd ──────────────────────────────────────────────────────────────────
+// Built-in module bindings for Pico-Panda programs.
+// Compiled and prepended before user code.
+//
+// Uses asm() to bridge pico-panda functions to VM CALL_MODULE instructions.
+// Args are already in locals (assembler resolves .local names to slots).
+
+// ── Console ───────────────────────────────────────────────────────────────────
+
+fun console_print_int(v: int)
+    asm("LOAD_LOCAL v")
+    asm("CALL_MODULE CONSOLE PRINT_INT")
+
+fun console_print_str(s: int)
+    asm("LOAD_LOCAL s")
+    asm("CALL_MODULE CONSOLE PRINT_STR")
+
+fun console_print_fixed(v: fixed)
+    asm("LOAD_LOCAL v")
+    asm("CALL_MODULE CONSOLE PRINT_FIXED")
+
+// ── Signal ────────────────────────────────────────────────────────────────────
+
+// Register a handler function address for a signal id.
+fun signal_create_handler(id: int, addr: int)
+    asm("LOAD_LOCAL id")
+    asm("LOAD_LOCAL addr")
+    asm("CALL_MODULE SIGNAL CREATE_HANDLER")
+
+fun signal_exit()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+
+// Send a signal with up to 4 register params.
+// Params are stored via STORE_REG before SEND_SIGNAL copies task.regs to signal.regs.
+fun signal_send(id: int, p0: int, p1: int, p2: int, p3: int)
+    asm("LOAD_LOCAL p0")
+    asm("STORE_REG 0")
+    asm("LOAD_LOCAL p1")
+    asm("STORE_REG 1")
+    asm("LOAD_LOCAL p2")
+    asm("STORE_REG 2")
+    asm("LOAD_LOCAL p3")
+    asm("STORE_REG 3")
+    asm("LOAD_LOCAL id")
+    asm("CALL_MODULE SIGNAL SEND_SIGNAL")

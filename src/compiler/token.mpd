@@ -30,6 +30,7 @@ enum TokenKind
     KW_FIXED    = 26
     KW_BOOL     = 27
     KW_BYTE     = 28
+    KW_ASM      = 29
     // ── Operators ─────────────────────────────────────────────────────────────
     PLUS        = 40    // +
     MINUS       = 41    // -

@@ -145,6 +145,26 @@ fun test_checker_undefined_ident()
 fun test_checker_break_outside_loop()
     assert(!pp_compile("fun f()\n    break\n"))
 
+// ── asm() statement tests ─────────────────────────────────────────────────────
+
+@test
+fun test_compile_asm()
+    assert(pp_compile("fun f(v: int)\n    asm(\"LOAD_LOCAL v\")\n    asm(\"CALL_MODULE CONSOLE PRINT_INT\")\n"))
+
+// ── @signal annotation tests ──────────────────────────────────────────────────
+
+@test
+fun test_compile_signal_app_start()
+    assert(pp_compile("@signal(\"app_start\")\nfun on_start()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+
+@test
+fun test_compile_signal_tick_count()
+    assert(pp_compile("@signal(\"tick\", 3)\nfun on_slow()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+
+@test
+fun test_compile_signal_interval()
+    assert(pp_compile("@signal(\"interval\", 500)\nfun on_timer()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+
 // ── End-to-end test ───────────────────────────────────────────────────────────
 
 @test

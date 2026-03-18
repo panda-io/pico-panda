@@ -109,6 +109,8 @@ class Assembler()
         _opcodes.set("STORE_GLOBAL",     i32(OpCode.StoreGlobal))
         _opcodes.set("LOAD_GLOBAL_IND",  i32(OpCode.LoadGlobalInd))
         _opcodes.set("STORE_GLOBAL_IND", i32(OpCode.StoreGlobalInd))
+        _opcodes.set("LOAD_REG",         i32(OpCode.LoadReg))
+        _opcodes.set("STORE_REG",        i32(OpCode.StoreReg))
         _opcodes.set("DUP",              i32(OpCode.Dup))
         _opcodes.set("SWAP",             i32(OpCode.Swap))
         _opcodes.set("DROP",             i32(OpCode.Drop))
@@ -237,7 +239,7 @@ class Assembler()
     fun _inst_size(m: u8[]) i32
         if equals(m, "PUSH") || equals(m, "PUSH_FLOAT") || equals(m, "PUSH_STR")
             return 5
-        if equals(m, "PUSH_ADDR") || equals(m, "PUSH_SLICE") || equals(m, "PUSH_FIELD_OFFSET")
+        if equals(m, "PUSH_ADDR") || equals(m, "PUSH_SLICE") || equals(m, "PUSH_FIELD_OFFSET") || equals(m, "PUSH_FUNC")
             return 5    // emitted as PUSH opcode + i32
         if equals(m, "JMP") || equals(m, "JMP_IF_TRUE") || equals(m, "JMP_IF_FALSE")
             return 3
@@ -248,6 +250,8 @@ class Assembler()
         if equals(m, "LOAD_GLOBAL") || equals(m, "STORE_GLOBAL")
             return 3
         if equals(m, "LOAD_LOCAL") || equals(m, "STORE_LOCAL")
+            return 2
+        if equals(m, "LOAD_REG") || equals(m, "STORE_REG")
             return 2
         return 1
 
@@ -548,6 +552,12 @@ class Assembler()
                 println()
                 _errors++
                 _emit_i32le(0)
+        else if equals(m, "PUSH_FUNC")
+            _emit_u8(0x01)
+            _emit_label(operand)
+        else if equals(m, "LOAD_REG") || equals(m, "STORE_REG")
+            _emit_u8(_opcode(m))
+            _emit_u8(u8(_parse_int(operand)))
         else if equals(m, "PUSH_SLICE")
             _emit_u8(0x01)
             if _array_slices.contains(operand)

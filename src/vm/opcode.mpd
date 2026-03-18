@@ -15,6 +15,9 @@ enum OpCode
     StoreGlobal     = 0x13  // STORE_GLOBAL addr(u16) → pop i32 → data[addr]
     LoadGlobalInd   = 0x14  // LOAD_GLOBAL_IND  → pop addr, push data[addr] as i32
     StoreGlobalInd  = 0x15  // STORE_GLOBAL_IND → pop addr, pop val, data[addr] = val
+    // Registers data segment
+    LoadReg         = 0x16  // LOAD_REG slot(u8) → push task.regs[slot]
+    StoreReg        = 0x17  // STORE_REG slot(u8) → task.regs[slot] = pop()
     // Integer arithmetic
     AddInt       = 0x20
     SubInt       = 0x21

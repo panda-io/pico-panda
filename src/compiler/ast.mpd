@@ -51,6 +51,7 @@ enum StmtKind
     CONTINUE    = 11
     EXPR_STMT   = 12  // d0=expr
     CONST_DECL  = 13  // d0=name(str), d1=type_id, d2=init
+    ASM_STMT    = 14  // d0=string_si  (raw PPasm text)
 
 enum DeclKind
     FUN         = 0   // d0=name(str), d1=params_start, d2=params_count, d3=body; ret_type in extra slot
@@ -230,4 +231,7 @@ class NodePool()
 
     fun stmt_const(name: i32, type_id: i32, init: i32) i32
         return alloc(i32(StmtKind.CONST_DECL), name, type_id, init, 0)
+
+    fun stmt_asm(si: i32) i32
+        return alloc(i32(StmtKind.ASM_STMT), si, 0, 0, 0)
 #end

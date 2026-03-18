@@ -62,7 +62,8 @@ class Codegen()
     fun gen() bool
         _errors = 0
         _gen_data()
-        _gen_code()
+        _gen_signal_main()   // __main + wrappers first → lands at PC=0
+        _gen_code()          // user functions after
         return _errors == 0
 
     fun error_count() i32
@@ -252,6 +253,10 @@ class Codegen()
             _gen_break()
         else if k == i32(StmtKind.CONTINUE)
             _gen_continue()
+        else if k == i32(StmtKind.ASM_STMT)
+            _put_str("    ")
+            _put_str(_scan.str_get(_nodes.d0(h)))
+            _put_str("\n")
         else if k == i32(StmtKind.EXPR_STMT)
             _gen_expr(_nodes.d0(h))
             _put_str("    DROP\n")
@@ -669,4 +674,174 @@ class Codegen()
             _put_str("\n")
             _put_str("    ADD_INT\n")
             _put_str("    LOAD_GLOBAL_IND\n")
+
+    // ── Signal glue ───────────────────────────────────────────────────────────
+    // Emits __main (handler registration) + per-annotation wrapper functions.
+    // __main is placed first so PC=0 is the entry point.
+
+    // Returns the VM signal id for a known signal name, or -1 for unknown.
+    fun _builtin_signal_id(name: u8[]) i32
+        if equals(name, "app_start")
+            return 2    // SIGNAL_APP_START
+        if equals(name, "tick")
+            return 3    // SIGNAL_TICK
+        if equals(name, "interval")
+            return 3    // also SIGNAL_TICK — wrapper accumulates elapsed time
+        return -1
+
+    fun _gen_signal_main()
+        // Count annotated functions
+        var ann_count: i32 = 0
+        var i: i32 = 0
+        while i < _decls.count()
+            if _decls.ann_name(i) != -1
+                ann_count++
+            i++
+        if ann_count == 0
+            return
+
+        // Emit signal globals (.data) for interval handlers
+        i = 0
+        while i < _decls.count()
+            if _decls.ann_name(i) != -1
+                val sig_name: u8[] = _scan.str_get(_decls.ann_name(i))
+                val fn_name:  u8[] = _scan.str_get(_decls.d0(i))
+                val n: i32 = _decls.ann_n(i)
+                if equals(sig_name, "interval") && n != -1
+                    // elapsed: fixed global
+                    _put_str(".global __elapsed_")
+                    _put_str(fn_name)
+                    _put_str(": fixed\n")
+                else if equals(sig_name, "tick") && n > 1
+                    // counter: int global
+                    _put_str(".global __count_")
+                    _put_str(fn_name)
+                    _put_str(": i32\n")
+            i++
+
+        // Emit .code + fun __main:
+        _put_str(".code\n")
+        _put_str("fun __main:\n")
+        i = 0
+        while i < _decls.count()
+            if _decls.ann_name(i) != -1
+                val sig_name: u8[] = _scan.str_get(_decls.ann_name(i))
+                val fn_name:  u8[] = _scan.str_get(_decls.d0(i))
+                val sig_id: i32 = _builtin_signal_id(sig_name)
+                if sig_id == -1
+                    _errors++
+                else
+                    _put_str("    PUSH ")
+                    _put_int(sig_id)
+                    _put_str("\n")
+                    _put_str("    PUSH_FUNC __wrap_")
+                    _put_str(fn_name)
+                    _put_str("\n")
+                    _put_str("    CALL_MODULE SIGNAL CREATE_HANDLER\n")
+            i++
+        _put_str("    CALL_MODULE SIGNAL EXIT_HANDLER\n")
+        _put_str("    RET\n\n")
+
+        // Emit wrapper functions
+        i = 0
+        while i < _decls.count()
+            if _decls.ann_name(i) != -1
+                val sig_name: u8[] = _scan.str_get(_decls.ann_name(i))
+                val fn_name:  u8[] = _scan.str_get(_decls.d0(i))
+                val n: i32 = _decls.ann_n(i)
+                _put_str("fun __wrap_")
+                _put_str(fn_name)
+                _put_str(":\n")
+                if equals(sig_name, "interval") && n != -1
+                    _gen_interval_wrapper(fn_name, n)
+                else if equals(sig_name, "tick") && n > 1
+                    _gen_tick_count_wrapper(fn_name, n)
+                else
+                    // plain wrapper: call user fn + exit
+                    _put_str("    CALL ")
+                    _put_str(fn_name)
+                    _put_str("\n")
+                    _put_str("    CALL_MODULE SIGNAL EXIT_HANDLER\n")
+                    _put_str("    RET\n\n")
+            i++
+
+    // Wrapper for @signal("tick", N): fire every N ticks.
+    fun _gen_tick_count_wrapper(fn_name: u8[], n: i32)
+        val lbl_fire: i32 = _new_label()
+        _put_str("    LOAD_GLOBAL __count_")
+        _put_str(fn_name)
+        _put_str("\n")
+        _put_str("    PUSH 1\n")
+        _put_str("    ADD_INT\n")
+        _put_str("    STORE_GLOBAL __count_")
+        _put_str(fn_name)
+        _put_str("\n")
+        _put_str("    LOAD_GLOBAL __count_")
+        _put_str(fn_name)
+        _put_str("\n")
+        _put_str("    PUSH ")
+        _put_int(n)
+        _put_str("\n")
+        _put_str("    CMP_LT_INT\n")
+        _put_str("    JMP_IF_FALSE ")
+        _put_label_ref(lbl_fire)
+        _put_str("\n")
+        _put_str("    CALL_MODULE SIGNAL EXIT_HANDLER\n")
+        _put_str("    RET\n")
+        _put_label_def(lbl_fire)
+        _put_str("    PUSH 0\n")
+        _put_str("    STORE_GLOBAL __count_")
+        _put_str(fn_name)
+        _put_str("\n")
+        _put_str("    CALL ")
+        _put_str(fn_name)
+        _put_str("\n")
+        _put_str("    CALL_MODULE SIGNAL EXIT_HANDLER\n")
+        _put_str("    RET\n\n")
+
+    // Wrapper for @signal("interval", N_ms): fire every N milliseconds.
+    // regs[0] = dt in fixed-point ms (passed by VM tick).
+    fun _gen_interval_wrapper(fn_name: u8[], ms: i32)
+        val lbl_fire: i32 = _new_label()
+        // Convert ms (int) to fixed: ms * 65536
+        val ms_fixed: i32 = ms * 65536
+        // accumulate elapsed
+        _put_str("    LOAD_GLOBAL __elapsed_")
+        _put_str(fn_name)
+        _put_str("\n")
+        _put_str("    LOAD_REG 0\n")  // dt in fixed ms
+        _put_str("    ADD_FIXED\n")
+        _put_str("    STORE_GLOBAL __elapsed_")
+        _put_str(fn_name)
+        _put_str("\n")
+        // check if elapsed >= interval
+        _put_str("    LOAD_GLOBAL __elapsed_")
+        _put_str(fn_name)
+        _put_str("\n")
+        _put_str("    PUSH ")
+        _put_int(ms_fixed)
+        _put_str("\n")
+        _put_str("    CMP_LT_FIXED\n")
+        _put_str("    JMP_IF_FALSE ")
+        _put_label_ref(lbl_fire)
+        _put_str("\n")
+        _put_str("    CALL_MODULE SIGNAL EXIT_HANDLER\n")
+        _put_str("    RET\n")
+        _put_label_def(lbl_fire)
+        // subtract interval (no drift)
+        _put_str("    LOAD_GLOBAL __elapsed_")
+        _put_str(fn_name)
+        _put_str("\n")
+        _put_str("    PUSH ")
+        _put_int(ms_fixed)
+        _put_str("\n")
+        _put_str("    SUB_FIXED\n")
+        _put_str("    STORE_GLOBAL __elapsed_")
+        _put_str(fn_name)
+        _put_str("\n")
+        _put_str("    CALL ")
+        _put_str(fn_name)
+        _put_str("\n")
+        _put_str("    CALL_MODULE SIGNAL EXIT_HANDLER\n")
+        _put_str("    RET\n\n")
 #end

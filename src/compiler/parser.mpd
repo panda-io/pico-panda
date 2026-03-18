@@ -41,6 +41,9 @@ class DeclList()
     var _d3:    HeapList<i32>
     // Extra slot for return-type (fun only)
     var _ret:   HeapList<i32>
+    // Signal annotation: signal name string index (-1 = none), N value (-1 = none)
+    var _ann_name: HeapList<i32>
+    var _ann_n:    HeapList<i32>
 
     fun init(heap: &HeapAllocator)
         _heap = heap
@@ -50,6 +53,8 @@ class DeclList()
         _d2.init(heap)
         _d3.init(heap)
         _ret.init(heap)
+        _ann_name.init(heap)
+        _ann_n.init(heap)
 
     fun add(kind: i32, d0: i32, d1: i32, d2: i32, d3: i32, ret: i32) i32
         val i: i32 = i32(_kinds.size())
@@ -59,7 +64,13 @@ class DeclList()
         _d2.push(d2)
         _d3.push(d3)
         _ret.push(ret)
+        _ann_name.push(-1)
+        _ann_n.push(-1)
         return i
+
+    fun set_annotation(i: i32, name_si: i32, n: i32)
+        _ann_name.set(u32(i), name_si)
+        _ann_n.set(u32(i), n)
 
     fun count() i32
         return i32(_kinds.size())
@@ -81,6 +92,12 @@ class DeclList()
 
     fun ret(i: i32) i32
         return _ret.get(u32(i))
+
+    fun ann_name(i: i32) i32
+        return _ann_name.get(u32(i))
+
+    fun ann_n(i: i32) i32
+        return _ann_n.get(u32(i))
 
 // ── Parser ────────────────────────────────────────────────────────────────────
 
@@ -234,8 +251,10 @@ class Parser()
     fun _parse_top_level() bool
         _skip_newlines()
         val k: i32 = _kind()
+        if k == i32(TokenKind.AT)
+            return _parse_annotated_fun()
         if k == i32(TokenKind.KW_FUN)
-            return _parse_fun_decl()
+            return _parse_fun_decl(-1, -1)
         if k == i32(TokenKind.KW_DATA)
             return _parse_data_decl()
         if k == i32(TokenKind.KW_ENUM)
@@ -247,7 +266,42 @@ class Parser()
         _error("expected top-level declaration")
         return false
 
-    fun _parse_fun_decl() bool
+    // Parse @signal("name") or @signal("name", N) followed by fun declaration.
+    fun _parse_annotated_fun() bool
+        _advance()  // '@'
+        if _kind() != i32(TokenKind.IDENT)
+            _error("expected annotation name")
+            return false
+        val ann_name_si: i32 = _val()
+        val ann_name: u8[] = _scan.str_get(ann_name_si)
+        _advance()
+        if !_expect(i32(TokenKind.LPAREN))
+            return false
+        // First arg: signal name string
+        if _kind() != i32(TokenKind.LIT_STR)
+            _error("expected signal name string")
+            return false
+        val sig_name_si: i32 = _val()
+        _advance()
+        // Optional second arg: N (integer)
+        var sig_n: i32 = -1
+        if _kind() == i32(TokenKind.COMMA)
+            _advance()
+            if _kind() != i32(TokenKind.LIT_INT)
+                _error("expected integer after signal name")
+                return false
+            sig_n = _val()
+            _advance()
+        if !_expect(i32(TokenKind.RPAREN))
+            return false
+        _consume_newline()
+        _skip_newlines()
+        if _kind() != i32(TokenKind.KW_FUN)
+            _error("expected fun after annotation")
+            return false
+        return _parse_fun_decl(sig_name_si, sig_n)
+
+    fun _parse_fun_decl(ann_name_si: i32, ann_n: i32) bool
         _advance()  // 'fun'
         if _kind() != i32(TokenKind.IDENT)
             _error("expected function name")
@@ -287,7 +341,9 @@ class Parser()
         val body: i32 = _parse_block()
         if body < 0
             return false
-        _decls.add(i32(DeclKind.FUN), name_si, params_start, params_count, body, ret_type)
+        val di: i32 = _decls.add(i32(DeclKind.FUN), name_si, params_start, params_count, body, ret_type)
+        if ann_name_si != -1
+            _decls.set_annotation(di, ann_name_si, ann_n)
         return true
 
     fun _parse_data_decl() bool
@@ -459,7 +515,23 @@ class Parser()
             _advance()
             _consume_newline()
             return _nodes.stmt_continue()
+        if k == i32(TokenKind.KW_ASM)
+            return _parse_asm()
         return _parse_assign_or_expr()
+
+    fun _parse_asm() i32
+        _advance()  // 'asm'
+        if !_expect(i32(TokenKind.LPAREN))
+            return -1
+        if _kind() != i32(TokenKind.LIT_STR)
+            _error("expected string in asm()")
+            return -1
+        val si: i32 = _val()
+        _advance()
+        if !_expect(i32(TokenKind.RPAREN))
+            return -1
+        _consume_newline()
+        return _nodes.stmt_asm(si)
 
     fun _parse_local_var() i32
         var is_val: i32 = 0

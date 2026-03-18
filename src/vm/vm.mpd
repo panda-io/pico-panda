@@ -389,6 +389,14 @@ class VM()
                 OpCode.StoreGlobalInd:
                     val addr: i32 = task.pop()
                     _write_i32le(data, addr, task.pop())
+                OpCode.LoadReg:
+                    val slot: i32 = i32(code[pc])
+                    pc++
+                    task.push(task.regs[slot])
+                OpCode.StoreReg:
+                    val slot: i32 = i32(code[pc])
+                    pc++
+                    task.regs[slot] = task.pop()
                 OpCode.Dup:
                     task.push(task.peek())
                 OpCode.Swap:
