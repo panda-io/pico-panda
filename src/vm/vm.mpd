@@ -54,6 +54,9 @@ class VM()
     var _module_count:         i32
     var _current_code:         Code
 
+    // ── Exit flag ─────────────────────────────────────────────────────────────
+    var _exit_requested:       bool
+
     // ── Error tracking ────────────────────────────────────────────────────────
     var _last_error:           VmError
 
@@ -75,6 +78,7 @@ class VM()
         _sig_head         = 0
         _sig_tail         = 0
         _sig_size         = 0
+        _exit_requested   = false
         _last_error       = VmError.NONE
         _module_count     = 0
         _current_code     = Code.Sys
@@ -262,6 +266,9 @@ class VM()
 
     @inline
     fun _dispatch_signal(sig: &Signal)
+        if sig.id == SIGNAL_EXIT
+            _exit_requested = true
+            return
         for handler: &Handler in _sys_handlers
             _process_signal(sig, handler, Code.Sys)
         for handler: &Handler in _app_handlers
@@ -641,3 +648,6 @@ fun vm_send(id: i32, param0: i32, param1: i32, param2: i32, param3: i32)
 
 fun vm_tick(delta: fixed)
     vm.tick(delta)
+
+fun vm_exit_requested() bool
+    return vm._exit_requested

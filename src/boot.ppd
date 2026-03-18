@@ -5,6 +5,13 @@
 // Uses asm() to bridge pico-panda functions to VM CALL_MODULE instructions.
 // Args are already in locals (assembler resolves .local names to slots).
 
+// ── Signal constants ──────────────────────────────────────────────────────────
+
+const SIGNAL_SYS_START: int = 1
+const SIGNAL_APP_START: int = 2
+const SIGNAL_TICK:      int = 3
+const SIGNAL_EXIT:      int = 99
+
 // ── Console ───────────────────────────────────────────────────────────────────
 
 fun console_print_int(v: int)
@@ -27,7 +34,8 @@ fun signal_create_handler(id: int, addr: int)
     asm("LOAD_LOCAL addr")
     asm("CALL_MODULE SIGNAL CREATE_HANDLER")
 
-fun signal_exit()
+// Exit the current signal handler (task finishes).
+fun signal_handler_exit()
     asm("CALL_MODULE SIGNAL EXIT_HANDLER")
 
 // Send a signal with up to 4 register params.
@@ -43,3 +51,8 @@ fun signal_send(id: int, p0: int, p1: int, p2: int, p3: int)
     asm("STORE_REG 3")
     asm("LOAD_LOCAL id")
     asm("CALL_MODULE SIGNAL SEND_SIGNAL")
+
+// Exit the program: queue SIGNAL_EXIT then finish this handler.
+fun exit()
+    signal_send(SIGNAL_EXIT, 0, 0, 0, 0)
+    signal_handler_exit()

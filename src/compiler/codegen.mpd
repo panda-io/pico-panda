@@ -39,6 +39,9 @@ class Codegen()
     // Current-function local names (set = local, 0 = absent)
     var _cur_locals: HeapMap<i32>
 
+    // Global constants (name → literal value); emitted as PUSH instead of LOAD_GLOBAL
+    var _global_consts: HeapMap<i32>
+
     // Break / continue label stacks (label index pushed per loop)
     var _break_lbl: HeapList<i32>
     var _cont_lbl:  HeapList<i32>
@@ -56,6 +59,7 @@ class Codegen()
         _label_n = 0
         _errors  = 0
         _cur_locals.init(heap)
+        _global_consts.init(heap)
         _break_lbl.init(heap)
         _cont_lbl.init(heap)
 
@@ -161,7 +165,16 @@ class Codegen()
         i = 0
         while i < _decls.count()
             if _decls.kind(i) == i32(DeclKind.GLOBAL_VAR)
-                _gen_global_decl(i)
+                if _decls.d3(i) == 1
+                    // Constant: if init is a literal int, register for inline push
+                    val init_e: i32 = _decls.d2(i)
+                    if init_e != -1 && _nodes.kind(init_e) == i32(ExprKind.LIT_INT)
+                        val name_si: i32 = _decls.d0(i)
+                        _global_consts.set(_scan.str_get(name_si), _nodes.d0(init_e))
+                    else
+                        _gen_global_decl(i)
+                else
+                    _gen_global_decl(i)
             i++
 
     fun _gen_struct_def(di: i32)
@@ -227,7 +240,9 @@ class Codegen()
             _cur_locals.set(pname, 1)
             j++
         _gen_stmt(body)
-        _put_str("\n")
+        // Implicit fallback: void functions need RET to return to caller.
+        // Explicit returns and EXIT_HANDLER paths make this unreachable for them.
+        _put_str("    PUSH 0\n    RET\n\n")
 
     // ── Statement generation ──────────────────────────────────────────────────
 
@@ -526,6 +541,10 @@ class Codegen()
             _put_str("    LOAD_LOCAL ")
             _put_str(name)
             _put_str("\n")
+        else if _global_consts.contains(name)
+            _put_str("    PUSH ")
+            _put_int(_global_consts.get(name))
+            _put_str("\n")
         else
             _put_str("    LOAD_GLOBAL ")
             _put_str(name)
@@ -681,14 +700,12 @@ class Codegen()
     // Emits __main (handler registration) + per-annotation wrapper functions.
     // __main is placed first so PC=0 is the entry point.
 
-    // Returns the VM signal id for a known signal name, or -1 for unknown.
-    fun _builtin_signal_id(name: u8[]) i32
-        if equals(name, "app_start")
-            return 2    // SIGNAL_APP_START
-        if equals(name, "tick")
-            return 3    // SIGNAL_TICK
-        if equals(name, "interval")
-            return 3    // also SIGNAL_TICK — wrapper accumulates elapsed time
+    // Resolve signal constant identifier → integer id via _global_consts.
+    // Returns -1 if not found.
+    fun _resolve_signal_id(ident_si: i32) i32
+        val name: u8[] = _scan.str_get(ident_si)
+        if _global_consts.contains(name)
+            return _global_consts.get(name)
         return -1
 
     fun _gen_signal_main()
@@ -702,20 +719,20 @@ class Codegen()
         if ann_count == 0
             return
 
-        // Emit signal globals (.data) for interval handlers
+        // Emit signal globals (.data) for interval and tick-count handlers
         i = 0
         while i < _decls.count()
             if _decls.ann_name(i) != -1
-                val sig_name: u8[] = _scan.str_get(_decls.ann_name(i))
-                val fn_name:  u8[] = _scan.str_get(_decls.d0(i))
+                val fn_name: u8[] = _scan.str_get(_decls.d0(i))
                 val n: i32 = _decls.ann_n(i)
-                if equals(sig_name, "interval") && n != -1
-                    // elapsed: fixed global
+                val k: i32 = _decls.ann_kind(i)
+                if k == 2 && n != -1
+                    // @interval: elapsed fixed global
                     _put_str(".global __elapsed_")
                     _put_str(fn_name)
                     _put_str(": fixed\n")
-                else if equals(sig_name, "tick") && n > 1
-                    // counter: int global
+                else if k == 1 && n > 1
+                    // @signal with N: tick-count global
                     _put_str(".global __count_")
                     _put_str(fn_name)
                     _put_str(": i32\n")
@@ -727,9 +744,8 @@ class Codegen()
         i = 0
         while i < _decls.count()
             if _decls.ann_name(i) != -1
-                val sig_name: u8[] = _scan.str_get(_decls.ann_name(i))
-                val fn_name:  u8[] = _scan.str_get(_decls.d0(i))
-                val sig_id: i32 = _builtin_signal_id(sig_name)
+                val fn_name: u8[] = _scan.str_get(_decls.d0(i))
+                val sig_id: i32 = _resolve_signal_id(_decls.ann_name(i))
                 if sig_id == -1
                     _errors++
                 else
@@ -748,15 +764,15 @@ class Codegen()
         i = 0
         while i < _decls.count()
             if _decls.ann_name(i) != -1
-                val sig_name: u8[] = _scan.str_get(_decls.ann_name(i))
-                val fn_name:  u8[] = _scan.str_get(_decls.d0(i))
+                val fn_name: u8[] = _scan.str_get(_decls.d0(i))
                 val n: i32 = _decls.ann_n(i)
+                val k: i32 = _decls.ann_kind(i)
                 _put_str("fun __wrap_")
                 _put_str(fn_name)
                 _put_str(":\n")
-                if equals(sig_name, "interval") && n != -1
+                if k == 2 && n != -1
                     _gen_interval_wrapper(fn_name, n)
-                else if equals(sig_name, "tick") && n > 1
+                else if k == 1 && n > 1
                     _gen_tick_count_wrapper(fn_name, n)
                 else
                     // plain wrapper: call user fn + exit
@@ -767,7 +783,7 @@ class Codegen()
                     _put_str("    RET\n\n")
             i++
 
-    // Wrapper for @signal("tick", N): fire every N ticks.
+    // Wrapper for @signal(SIGNAL_TICK, N): fire every N ticks.
     fun _gen_tick_count_wrapper(fn_name: u8[], n: i32)
         val lbl_fire: i32 = _new_label()
         _put_str("    LOAD_GLOBAL __count_")
@@ -801,7 +817,7 @@ class Codegen()
         _put_str("    CALL_MODULE SIGNAL EXIT_HANDLER\n")
         _put_str("    RET\n\n")
 
-    // Wrapper for @signal("interval", N_ms): fire every N milliseconds.
+    // Wrapper for @interval(SIGNAL_TICK, N_ms): fire every N milliseconds.
     // regs[0] = dt in fixed-point ms (passed by VM tick).
     fun _gen_interval_wrapper(fn_name: u8[], ms: i32)
         val lbl_fire: i32 = _new_label()

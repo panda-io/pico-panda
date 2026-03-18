@@ -160,15 +160,15 @@ fun test_compile_asm()
 
 @test
 fun test_compile_signal_app_start()
-    assert(pp_compile("@signal(\"app_start\")\nfun on_start()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+    assert(pp_compile("const SIGNAL_APP_START: int = 2\n@signal(SIGNAL_APP_START)\nfun on_start()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
 
 @test
 fun test_compile_signal_tick_count()
-    assert(pp_compile("@signal(\"tick\", 3)\nfun on_slow()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+    assert(pp_compile("const SIGNAL_TICK: int = 3\n@signal(SIGNAL_TICK, 3)\nfun on_slow()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
 
 @test
 fun test_compile_signal_interval()
-    assert(pp_compile("@signal(\"interval\", 500)\nfun on_timer()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+    assert(pp_compile("const SIGNAL_TICK: int = 3\n@interval(SIGNAL_TICK, 500)\nfun on_timer()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
 
 // ── End-to-end test ───────────────────────────────────────────────────────────
 

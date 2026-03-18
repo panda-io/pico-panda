@@ -2,20 +2,23 @@
 // Pico-panda unified CLI entry point.
 //
 // Usage:
-//   ppd build         compile project from ppd.cfg
+//   ppd compile       compile project from ppd.cfg (produces .ppbc)
 //   ppd run [file]    run bytecode (default: output path from ppd.cfg)
+//     -fps N          tick rate in Hz (default: 100)
 //
 // HOSTED only.
 
-import assembler::*
+import assembler.assembler::*
+import compiler.compiler::*
 import project::*
-import vm::*
-import config::MAX_CODE
+import vm.vm::*
+import vm.config::MAX_CODE
 import console::*
 import file::*
 import string::*
 
-@include("string.h")
+@include("unistd.h")
+@include("ppd_host.h")
 
 // Access C main() argc/argv via the statics emitted by the compiler.
 @extern("__mp_argc")
@@ -32,36 +35,51 @@ fun _argv(i: i32): u8[]
     val ptr: &u8 = _argv_ptr(i)
     return {ptr, len}
 
-// Module-level to keep large buffers off the stack.
-var _asm:     Assembler
-var _cfg:     PpdConfig
-var _run_buf: u8[MAX_CODE]
+// ── Host helpers ──────────────────────────────────────────────────────────────
 
-fun _write_output(out_path: u8[])
-    if _asm.error_count() > 0
-        print_str("assembly failed: ")
-        print_i32(_asm.error_count())
-        print_str(" error(s)")
-        println()
-        return
+@extern("usleep({us})")
+fun _usleep(us: u32)
+
+@extern("_ppd_time_us()")
+fun _ppd_time_us(): i64
+
+@extern("_ppd_install_sigint()")
+fun _ppd_install_sigint()
+
+@extern("_ppd_exit_flag()")
+fun _ppd_exit_flag(): bool
+
+@extern("_ppd_init_boot_path(__mp_argv[0])")
+fun _ppd_init_boot_path()
+
+@extern("((uint8_t*)_ppd_boot_path())")
+fun _boot_path_ptr(): &u8
+
+@extern("_ppd_boot_path_len()")
+fun _boot_path_len(): u32
+
+fun _boot_path(): u8[]
+    return {_boot_path_ptr(), _boot_path_len()}
+
+// ── Module-level buffers (kept off the stack) ─────────────────────────────────
+
+var _cfg:      PpdConfig
+var _run_buf:  u8[MAX_CODE]
+var _src_buf:  u8[65536]    // combined source for compilation
+var _compiler: Compiler
+
+// ── Compile command ───────────────────────────────────────────────────────────
+
+// Read file into _src_buf at offset; returns bytes read, or -1 on open error.
+fun _read_into_src(path: u8[], offset: i32, remaining: i32) i32
     var f: File
-    if !f.open(out_path, WRITE)
-        print_str("error: cannot write '")
-        print_str(out_path)
-        print_str("'")
-        println()
-        return
-    val bc: u8[] = _asm.get_bytecode()
-    f.write_bytes(bc)
+    if !f.open(path, READ)
+        return -1
+    val n: u32 = f.read_bytes({&_src_buf[offset], u32(remaining)})
     f.close()
-    print_str("wrote ")
-    print_i32(i32(bc.size()))
-    print_str(" bytes to '")
-    print_str(out_path)
-    print_str("'")
-    println()
+    return i32(n)
 
-fun _cmd_build()
+fun _cmd_compile()
     if !_cfg.load("ppd.cfg")
         print_str("error: cannot open 'ppd.cfg'")
         println()
@@ -70,27 +88,73 @@ fun _cmd_build()
         print_str("error: 'ppd.cfg' must define 'src' and 'output'")
         println()
         return
+
     var i: i32 = 0
     while i < _cfg.src_count()
-        if !ends_with(_cfg.src(i), ".ppasm")
-            print_str("error: only *.ppasm supported: ")
+        if !ends_with(_cfg.src(i), ".ppd")
+            print_str("error: only *.ppd supported: ")
             print_str(_cfg.src(i))
             println()
             return
         i++
-    _asm.init()
-    i = 0
-    while i < _cfg.src_count()
-        _asm.pass1(_cfg.src(i))
-        i++
-    _asm.reset_pc()
-    i = 0
-    while i < _cfg.src_count()
-        _asm.pass2(_cfg.src(i))
-        i++
-    _write_output(_cfg.output())
 
-fun _cmd_run(path: u8[])
+    // Build combined source: boot.ppd + all .ppd files
+    var pos: i32 = 0
+    val buf_end: i32 = 65536
+
+    // Try boot.ppd from binary dir, fallback to current directory
+    _ppd_init_boot_path()
+    var n: i32 = _read_into_src(_boot_path(), pos, buf_end - pos)
+    if n < 0
+        n = _read_into_src("boot.ppd", pos, buf_end - pos)
+        if n < 0
+            print_str("error: cannot find boot.ppd")
+            println()
+            return
+    pos = pos + n
+    _src_buf[pos] = u8(10)
+    pos++
+
+    // Append each source file
+    i = 0
+    while i < _cfg.src_count()
+        n = _read_into_src(_cfg.src(i), pos, buf_end - pos)
+        if n < 0
+            print_str("error: cannot open '")
+            print_str(_cfg.src(i))
+            print_str("'")
+            println()
+            return
+        pos = pos + n
+        _src_buf[pos] = u8(10)
+        pos++
+        i++
+
+    // Compile
+    val src: u8[] = {&_src_buf[0], u32(pos)}
+    if !_compiler.compile(src)
+        print_str("compile error (")
+        print_i32(_compiler.error_count())
+        print_str(" error(s))")
+        println()
+        return
+
+    // Assemble and write bytecode
+    if !_compiler.write_bytecode(_cfg.output())
+        print_str("error: failed to write '")
+        print_str(_cfg.output())
+        print_str("'")
+        println()
+        return
+
+    print_str("compiled to '")
+    print_str(_cfg.output())
+    print_str("'")
+    println()
+
+// ── Run command ───────────────────────────────────────────────────────────────
+
+fun _cmd_run(path: u8[], fps: i32)
     var run_path: u8[] = path
     if path.size() == u32(0)
         if !_cfg.load("ppd.cfg")
@@ -102,6 +166,7 @@ fun _cmd_run(path: u8[])
             println()
             return
         run_path = _cfg.output()
+
     var f: File
     if !f.open(run_path, READ)
         print_str("error: cannot open '")
@@ -111,17 +176,36 @@ fun _cmd_run(path: u8[])
         return
     val n: u32 = f.read_bytes({&_run_buf[0], u32(MAX_CODE)})
     f.close()
+
     vm_reset()
     vm_load_app({&_run_buf[0], n})
     vm_boot_app()
 
+    val target_us: i64 = i64(1000000) / i64(fps)
+    val dt: fixed = fixed(65536 / fps)   // 1/fps as 16.16 fixed
+    _ppd_install_sigint()
+
+    while !_ppd_exit_flag() && !vm_exit_requested()
+        val t0: i64 = _ppd_time_us()
+        vm_tick(dt)
+        val elapsed: i64 = _ppd_time_us() - t0
+        val remaining: i64 = target_us - elapsed
+        if remaining > 0
+            _usleep(u32(remaining))
+
+// ── Usage ─────────────────────────────────────────────────────────────────────
+
 fun _usage()
     print_str("usage: ppd <command>")
     println()
-    print_str("  build         compile project from ppd.cfg")
+    print_str("  compile           compile project from ppd.cfg")
     println()
-    print_str("  run [file]    run bytecode (default: ppd.cfg output)")
+    print_str("  run [file]        run bytecode (default: ppd.cfg output)")
     println()
+    print_str("    -fps N          tick rate in Hz (default: 100)")
+    println()
+
+// ── Entry point ───────────────────────────────────────────────────────────────
 
 fun main()
     val argc: i32 = _argc()
@@ -129,13 +213,27 @@ fun main()
         _usage()
         return
     val cmd: u8[] = _argv(1)
-    if equals(cmd, "build")
-        _cmd_build()
+
+    if equals(cmd, "compile")
+        _cmd_compile()
         return
+
     if equals(cmd, "run")
         var run_arg: u8[] = ""
-        if argc >= 3
-            run_arg = _argv(2)
-        _cmd_run(run_arg)
+        var fps: i32 = 100
+        // parse positional file arg and optional -fps N
+        var j: i32 = 2
+        while j < argc
+            val a: u8[] = _argv(j)
+            if equals(a, "-fps") && j + 1 < argc
+                fps = parse_i32(_argv(j + 1))
+                j = j + 2
+            else if !starts_with(a, "-")
+                run_arg = a
+                j++
+            else
+                j++
+        _cmd_run(run_arg, fps)
         return
+
     _usage()

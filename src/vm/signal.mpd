@@ -4,6 +4,7 @@ import vm.task::REGISTER_SIZE
 const SIGNAL_SYS_START: i32 = 1
 const SIGNAL_APP_START: i32 = 2
 const SIGNAL_TICK:      i32 = 3
+const SIGNAL_EXIT:      i32 = 99
 
 class Signal()
     var id:   i32

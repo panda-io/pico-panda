@@ -16,6 +16,6 @@ targets:
     entry: ppd
     platform: linux-x64
     cc: gcc
-    cflags: [-O2, -Wall]
+    cflags: [-O2, -Wall, -Isrc]
     flags: [HOSTED]
     output: bin/ppd
