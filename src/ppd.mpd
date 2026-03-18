@@ -19,6 +19,16 @@ import string::*
 
 @include("unistd.h")
 @include("ppd_host.h")
+@include("boot_embedded.h")
+
+@extern("((uint8_t*)_ppd_boot_embedded)")
+fun _boot_embedded_ptr(): &u8
+
+@extern("_ppd_boot_embedded_len")
+fun _boot_embedded_len(): u32
+
+fun _boot_embedded_src() u8[]
+    return {_boot_embedded_ptr(), _boot_embedded_len()}
 
 // Access C main() argc/argv via the statics emitted by the compiler.
 @extern("__mp_argc")
@@ -102,15 +112,19 @@ fun _cmd_compile()
     var pos: i32 = 0
     val buf_end: i32 = 65536
 
-    // Try boot.ppd from binary dir, fallback to current directory
+    // Try boot.ppd from binary dir, then current directory, then embedded copy
     _ppd_init_boot_path()
     var n: i32 = _read_into_src(_boot_path(), pos, buf_end - pos)
     if n < 0
         n = _read_into_src("boot.ppd", pos, buf_end - pos)
-        if n < 0
-            print_str("error: cannot find boot.ppd")
-            println()
-            return
+    if n < 0
+        val emb: u8[] = _boot_embedded_src()
+        val emb_len: i32 = i32(emb.size())
+        var k: i32 = 0
+        while k < emb_len && pos + k < buf_end
+            _src_buf[pos + k] = emb[k]
+            k++
+        n = k
     pos = pos + n
     _src_buf[pos] = u8(10)
     pos++
