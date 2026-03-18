@@ -232,6 +232,9 @@ class Parser()
         if _kind() == i32(TokenKind.KW_BYTE)
             _advance()
             return TYPE_BYTE
+        if _kind() == i32(TokenKind.KW_STRING)
+            _advance()
+            return TYPE_STRING
         if _kind() == i32(TokenKind.IDENT)
             // Named type (data / enum) — look up later; return name-encoded id
             // We reserve 100..999 for named-type placeholders;

@@ -69,6 +69,7 @@ const TYPE_BOOL:  i32 = 2
 const TYPE_BYTE:  i32 = 3
 // IDs 4+ are data/enum type IDs allocated in the TypeTable.
 // Reference: TYPE_REF_BASE + inner_type_id  (see types.mpd for encoding)
+const TYPE_STRING: i32 = 500   // pseudo-type: packed i32 (addr<<16|len) at runtime
 const TYPE_REF_BASE:   i32 = 1000
 const TYPE_ARRAY_BASE: i32 = 2000   // TYPE_ARRAY_BASE + elem_type_id
 const TYPE_SLICE_BASE: i32 = 3000   // TYPE_SLICE_BASE + elem_type_id

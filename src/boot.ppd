@@ -11,7 +11,7 @@ fun console_print_int(v: int)
     asm("LOAD_LOCAL v")
     asm("CALL_MODULE CONSOLE PRINT_INT")
 
-fun console_print_str(s: int)
+fun console_print_str(s: string)
     asm("LOAD_LOCAL s")
     asm("CALL_MODULE CONSOLE PRINT_STR")
 

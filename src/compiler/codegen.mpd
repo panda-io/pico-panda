@@ -133,6 +133,8 @@ class Codegen()
             return "bool"
         if t == TYPE_BYTE
             return "u8"
+        if t == TYPE_STRING
+            return "i32"   // string is packed i32 at runtime
         return "i32"
 
     // Reverse lookup: type_id → struct name (by scanning decls)

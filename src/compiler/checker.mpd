@@ -354,7 +354,7 @@ class Checker()
         else if k == i32(ExprKind.LIT_FIXED)
             t = TYPE_FIXED
         else if k == i32(ExprKind.LIT_STR)
-            t = TYPE_SLICE_BASE + TYPE_BYTE
+            t = TYPE_STRING
         else if k == i32(ExprKind.LIT_BOOL)
             t = TYPE_BOOL
         else if k == i32(ExprKind.IDENT)
