@@ -193,10 +193,33 @@ fun _cmd_run(path: u8[], fps: i32)
         if remaining > 0
             _usleep(u32(remaining))
 
+// ── Init command ──────────────────────────────────────────────────────────────
+
+fun _cmd_init()
+    var chk: File
+    if chk.open("ppd.cfg", READ)
+        chk.close()
+        print_str("error: 'ppd.cfg' already exists")
+        println()
+        return
+    var f: File
+    if !f.open("ppd.cfg", WRITE)
+        print_str("error: cannot create 'ppd.cfg'")
+        println()
+        return
+    f.write_bytes("# ppd.cfg — Pico Panda project\n")
+    f.write_bytes("src    = main.ppd\n")
+    f.write_bytes("output = main.ppbc\n")
+    f.close()
+    print_str("created 'ppd.cfg'")
+    println()
+
 // ── Usage ─────────────────────────────────────────────────────────────────────
 
 fun _usage()
     print_str("usage: ppd <command>")
+    println()
+    print_str("  init              create ppd.cfg template in current directory")
     println()
     print_str("  compile           compile project from ppd.cfg")
     println()
@@ -213,6 +236,10 @@ fun main()
         _usage()
         return
     val cmd: u8[] = _argv(1)
+
+    if equals(cmd, "init")
+        _cmd_init()
+        return
 
     if equals(cmd, "compile")
         _cmd_compile()

@@ -276,8 +276,8 @@ class Parser()
         _error("expected top-level declaration")
         return false
 
-    // Parse @signal(IDENT) or @signal(IDENT, N) or @interval(IDENT, N) followed by fun declaration.
-    // ann_kind: 1 = @signal, 2 = @interval
+    // Parse @signal(IDENT) | @tick(N) | @interval(N_ms) followed by fun declaration.
+    // ann_kind: 1=@signal  2=@interval  3=@tick
     fun _parse_annotated_fun() bool
         _advance()  // '@'
         if _kind() != i32(TokenKind.IDENT)
@@ -289,24 +289,30 @@ class Parser()
             ann_kind = 1
         else if equals(ann_name, "interval")
             ann_kind = 2
+        else if equals(ann_name, "tick")
+            ann_kind = 3
         else
             _error("unknown annotation")
             return false
         _advance()
         if !_expect(i32(TokenKind.LPAREN))
             return false
-        // First arg: signal constant identifier
-        if _kind() != i32(TokenKind.IDENT)
-            _error("expected signal constant identifier")
-            return false
-        val sig_ident_si: i32 = _val()
-        _advance()
-        // Optional second arg: N (integer)
+        var sig_ident_si: i32 = -1
         var sig_n: i32 = -1
-        if _kind() == i32(TokenKind.COMMA)
+        if ann_kind == 1
+            // @signal(IDENT) — signal constant identifier
+            if _kind() != i32(TokenKind.IDENT)
+                _error("expected signal constant identifier")
+                return false
+            sig_ident_si = _val()
             _advance()
+        else
+            // @tick(N) or @interval(N_ms) — integer argument
             if _kind() != i32(TokenKind.LIT_INT)
-                _error("expected integer as second argument")
+                if ann_kind == 3
+                    _error("expected tick count")
+                else
+                    _error("expected interval in milliseconds")
                 return false
             sig_n = _val()
             _advance()
@@ -360,7 +366,7 @@ class Parser()
         if body < 0
             return false
         val di: i32 = _decls.add(i32(DeclKind.FUN), name_si, params_start, params_count, body, ret_type)
-        if ann_name_si != -1
+        if ann_kind > 0
             _decls.set_annotation(di, ann_name_si, ann_n, ann_kind)
         return true
 
