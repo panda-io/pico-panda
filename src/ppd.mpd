@@ -199,13 +199,17 @@ fun _cmd_run(path: u8[], fps: i32)
     val dt: fixed = fixed(65536 / fps)   // 1/fps as 16.16 fixed
     _ppd_install_sigint()
 
+    // Deadline-based loop: advance deadline by target_us each tick so
+    // _usleep overshoots never accumulate into wall-clock drift.
+    var deadline: i64 = _ppd_time_us()
     while !_ppd_exit_flag() && !vm_exit_requested()
-        val t0: i64 = _ppd_time_us()
+        deadline = deadline + target_us
         vm_tick(dt)
-        val elapsed: i64 = _ppd_time_us() - t0
-        val remaining: i64 = target_us - elapsed
+        val remaining: i64 = deadline - _ppd_time_us()
         if remaining > 0
             _usleep(u32(remaining))
+        else
+            deadline = _ppd_time_us()  // behind schedule: reset to avoid catch-up spiral
 
 // ── Init command ──────────────────────────────────────────────────────────────
 
