@@ -159,8 +159,8 @@ fun test_compile_asm()
 // ── @signal annotation tests ──────────────────────────────────────────────────
 
 @test
-fun test_compile_signal_app_start()
-    assert(pp_compile("const SIGNAL_APP_START: int = 2\n@signal(SIGNAL_APP_START)\nfun on_start()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+fun test_compile_signal_sys_start()
+    assert(pp_compile("const SIGNAL_SYS_START: int = 1\n@signal(SIGNAL_SYS_START)\nfun on_start()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
 
 @test
 fun test_compile_tick()

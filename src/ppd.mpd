@@ -192,8 +192,8 @@ fun _cmd_run(path: u8[], fps: i32)
     f.close()
 
     vm_reset()
-    vm_load_app({&_run_buf[0], n})
-    vm_boot_app()
+    vm_load_sys({&_run_buf[0], n})
+    vm_boot_sys()
 
     val target_us: i64 = i64(1000000) / i64(fps)
     val dt: fixed = fixed(65536 / fps)   // 1/fps as 16.16 fixed

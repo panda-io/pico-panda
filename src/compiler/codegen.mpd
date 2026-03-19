@@ -723,7 +723,16 @@ class Codegen()
             if _decls.ann_kind(i) > 0
                 ann_count++
             i++
-        if ann_count == 0
+
+        // Count initialized global vars (non-const, has initializer expression)
+        var init_count: i32 = 0
+        i = 0
+        while i < _decls.count()
+            if _decls.kind(i) == i32(DeclKind.GLOBAL_VAR) && _decls.d3(i) == 0 && _decls.d2(i) != -1
+                init_count++
+            i++
+
+        if ann_count == 0 && init_count == 0
             return
 
         // Emit signal globals (.data)
@@ -748,6 +757,20 @@ class Codegen()
         // Emit .code + fun __main:
         _put_str(".code\n")
         _put_str("fun __main:\n")
+
+        // Emit global var initializers (non-const vars with an init expression)
+        i = 0
+        while i < _decls.count()
+            if _decls.kind(i) == i32(DeclKind.GLOBAL_VAR) && _decls.d3(i) == 0
+                val init_e: i32 = _decls.d2(i)
+                if init_e != -1
+                    val name: u8[] = _scan.str_get(_decls.d0(i))
+                    _gen_expr(init_e)
+                    _put_str("    STORE_GLOBAL ")
+                    _put_str(name)
+                    _put_str("\n")
+            i++
+
         i = 0
         while i < _decls.count()
             val k: i32 = _decls.ann_kind(i)

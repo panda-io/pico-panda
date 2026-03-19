@@ -338,10 +338,14 @@ class Scanner()
             if c == u8(32) || c == u8(9)   // space / tab
                 if at_line_start
                     val col: i32 = _measure_indent()
-                    _handle_indent(col, line)
                     // skip the spaces
                     while _pos < i32(_src.size()) && (_src[u32(_pos)] == u8(32) || _src[u32(_pos)] == u8(9))
                         _advance()
+                    // only update indent level for non-blank lines (blank = spaces/comment only)
+                    val nc: u8 = _peek()
+                    val is_blank: bool = nc == u8(10) || nc == u8(13) || nc == u8(0) || (nc == u8(47) && _peek2() == u8(47))
+                    if !is_blank
+                        _handle_indent(col, line)
                     at_line_start = false
                 else
                     _advance()
