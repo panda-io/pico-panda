@@ -11,8 +11,8 @@
 // expr_type(h) returns the inferred type_id for expression node h.
 
 #if HOSTED
-import memory::HeapAllocator
-import collection::HeapList
+import hosted.memory::HeapAllocator
+import hosted.collection::HeapList
 import compiler.scanner::Scanner
 import compiler.ast::*
 import compiler.token::TokenKind

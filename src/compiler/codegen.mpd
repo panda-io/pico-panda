@@ -8,9 +8,9 @@
 // into the shared NodePool / DeclList.
 
 #if HOSTED
-import memory::HeapAllocator
-import collection::HeapList
-import collection::HeapMap
+import hosted.memory::HeapAllocator
+import hosted.collection::HeapList
+import hosted.collection::HeapMap
 import compiler.scanner::Scanner
 import compiler.ast::*
 import compiler.token::TokenKind

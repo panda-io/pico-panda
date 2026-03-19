@@ -6,7 +6,7 @@
 //   output = bin/app.bin
 //   entry  = main                 (optional, defaults to "main")
 
-import file::*
+import hosted.file::*
 import string::*
 
 const _MAX_SRC:  i32 = 64

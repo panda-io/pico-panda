@@ -9,9 +9,9 @@
 //   T[]        → TYPE_SLICE_BASE + inner_type_id
 
 #if HOSTED
-import memory::HeapAllocator
-import collection::HeapList
-import collection::HeapMap
+import hosted.memory::HeapAllocator
+import hosted.collection::HeapList
+import hosted.collection::HeapMap
 import compiler.ast::*
 
 enum TypeCategory

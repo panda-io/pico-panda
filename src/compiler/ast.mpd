@@ -15,8 +15,8 @@
 // referenced by their string-pool index stored in a d-slot.
 
 #if HOSTED
-import memory::HeapAllocator
-import collection::HeapList
+import hosted.memory::HeapAllocator
+import hosted.collection::HeapList
 
 // ── Node kinds ────────────────────────────────────────────────────────────────
 

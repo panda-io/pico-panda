@@ -20,13 +20,13 @@
 //       c.write_bytecode("out.ppd")
 
 #if HOSTED
-import memory::HeapAllocator
+import hosted.memory::HeapAllocator
 import compiler.scanner::Scanner
 import compiler.parser::Parser
 import compiler.checker::Checker
 import compiler.codegen::Codegen
 import assembler.assembler::Assembler
-import file::*
+import hosted.file::*
 import console::*
 
 class Compiler()

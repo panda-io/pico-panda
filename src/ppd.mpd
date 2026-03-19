@@ -14,7 +14,7 @@ import project::*
 import vm.vm::*
 import vm.config::MAX_CODE
 import console::*
-import file::*
+import hosted.file::*
 import string::*
 
 @include("unistd.h")

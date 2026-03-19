@@ -18,9 +18,9 @@
 //   is_val   — true if binding is immutable (val/const)
 
 #if HOSTED
-import memory::HeapAllocator
-import collection::HeapList
-import collection::HeapMap
+import hosted.memory::HeapAllocator
+import hosted.collection::HeapList
+import hosted.collection::HeapMap
 
 enum SymbolKind
     VAR         = 0   // mutable variable

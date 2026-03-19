@@ -23,9 +23,9 @@
 //
 // Multi-file: call pass1() for each file, reset_pc(), call pass2() for each file.
 
-import memory::HeapAllocator
-import collection::HeapMap
-import file::*
+import hosted.memory::HeapAllocator
+import hosted.collection::HeapMap
+import hosted.file::*
 import string::*
 import console::*
 import vm.opcode::OpCode

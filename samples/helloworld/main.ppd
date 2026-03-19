@@ -1,4 +1,4 @@
-@signal(SIGNAL_APP_START)
+@signal(SIGNAL_SYS_START)
 fun on_start()
     console_print_str("Hello world!\n")
     exit()

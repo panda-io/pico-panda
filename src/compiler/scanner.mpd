@@ -14,8 +14,8 @@
 // NEWLINE is injected at the end of each logical line.
 
 #if HOSTED
-import memory::HeapAllocator
-import collection::HeapList
+import hosted.memory::HeapAllocator
+import hosted.collection::HeapList
 import string::*
 
 const TOK_STRIDE: i32 = 3   // slots per token

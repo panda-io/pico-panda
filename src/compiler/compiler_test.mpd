@@ -3,7 +3,7 @@
 
 #if HOSTED
 import test::assert
-import memory::HeapAllocator
+import hosted.memory::HeapAllocator
 import compiler.compiler::*
 import compiler.scanner::Scanner
 import compiler.parser::Parser
