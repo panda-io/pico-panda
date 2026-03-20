@@ -1,3 +1,5 @@
+val boot_program := '''
+
 // ── boot.ppd ──────────────────────────────────────────────────────────────────
 // Built-in module bindings for Pico-Panda programs.
 // Compiled and prepended before user code.
@@ -56,3 +58,5 @@ fun signal_send(id: int, p0: int, p1: int, p2: int, p3: int)
 fun exit()
     signal_send(SIGNAL_EXIT, 0, 0, 0, 0)
     signal_handler_exit()
+
+'''

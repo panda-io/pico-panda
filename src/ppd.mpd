@@ -19,32 +19,7 @@ import hosted.args::*
 import hosted.time::*
 import hosted.signal::*
 import string::*
-
-@include("ppd_host.h")
-@include("boot_embedded.h")
-
-@extern("((uint8_t*)_ppd_boot_embedded)")
-fun _boot_embedded_ptr(): &u8
-
-@extern("_ppd_boot_embedded_len")
-fun _boot_embedded_len(): u32
-
-fun _boot_embedded_src() u8[]
-    return {_boot_embedded_ptr(), _boot_embedded_len()}
-
-// ── Host helpers ──────────────────────────────────────────────────────────────
-
-@extern("_ppd_init_boot_path(__mp_argv[0])")
-fun _ppd_init_boot_path()
-
-@extern("((uint8_t*)_ppd_boot_path())")
-fun _boot_path_ptr(): &u8
-
-@extern("_ppd_boot_path_len()")
-fun _boot_path_len(): u32
-
-fun _boot_path(): u8[]
-    return {_boot_path_ptr(), _boot_path_len()}
+import boot::boot_program
 
 // ── Module-level buffers (kept off the stack) ─────────────────────────────────
 
@@ -87,24 +62,17 @@ fun _cmd_compile()
     var pos: i32 = 0
     val buf_end: i32 = 65536
 
-    // Try boot.ppd from binary dir, then current directory, then embedded copy
-    _ppd_init_boot_path()
-    var n: i32 = _read_into_src(_boot_path(), pos, buf_end - pos)
-    if n < 0
-        n = _read_into_src("boot.ppd", pos, buf_end - pos)
-    if n < 0
-        val emb: u8[] = _boot_embedded_src()
-        val emb_len: i32 = i32(emb.size())
-        var k: i32 = 0
-        while k < emb_len && pos + k < buf_end
-            _src_buf[pos + k] = emb[k]
-            k++
-        n = k
-    pos = pos + n
+    // Prepend boot program
+    var k: i32 = 0
+    while k < i32(boot_program.size()) && pos + k < buf_end
+        _src_buf[pos + k] = boot_program[u32(k)]
+        k++
+    pos = pos + k
     _src_buf[pos] = u8(10)
     pos++
 
     // Append each source file
+    var n: i32 = 0
     i = 0
     while i < _cfg.src_count()
         n = _read_into_src(_cfg.src(i), pos, buf_end - pos)
