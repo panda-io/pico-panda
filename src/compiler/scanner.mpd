@@ -362,9 +362,7 @@ class Scanner()
                 at_line_start = false
 
             // ── numbers ───────────────────────────────────────────────────
-            if _is_digit(c) || (c == u8(45) && _is_digit(_peek2()))  // '-' digit
-                if c == u8(45)
-                    _advance()
+            if _is_digit(c)
                 val num_line: i32 = _line
                 _scan_number(num_line)
                 continue

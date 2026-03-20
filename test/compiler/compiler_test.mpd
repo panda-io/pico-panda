@@ -226,6 +226,33 @@ fun test_compile_priority_equal_stable()
     assert(pos_first >= 0 && pos_second >= 0)
     assert(pos_first < pos_second)
 
+@test
+fun test_negative_priority_stored()
+    var c: Compiler
+    // @tick(1, -5): priority should be stored as -5
+    val src: u8[] = "@tick(1, -5)\nfun neg5()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"
+    assert(c.compile(src))
+    val decls: &DeclList = c.parser().decls()
+    var found_pri: i32 = 9999
+    var i: i32 = 0
+    while i < decls.count()
+        if decls.ann_kind(i) > 0
+            found_pri = decls.ann_priority(i)
+        i++
+    assert(found_pri == -5)
+
+@test
+fun test_compile_negative_priority_ordering()
+    var c: Compiler
+    val src: u8[] = "@tick(1, -1)\nfun neg1()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n@tick(1)\nfun zero()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"
+    assert(c.compile(src))
+    val out: u8[] = c.asm_output()
+    val pos_zero: i32 = _find_str(out, "__wrap_zero")
+    val pos_neg1: i32 = _find_str(out, "__wrap_neg1")
+    assert(pos_zero >= 0 && pos_neg1 >= 0)
+    // zero (priority 0) should appear before neg1 (priority -1)
+    assert(pos_zero < pos_neg1)
+
 // ── End-to-end test ───────────────────────────────────────────────────────────
 
 @test

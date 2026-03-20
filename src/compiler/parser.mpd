@@ -352,10 +352,16 @@ class Parser()
         var sig_priority: i32 = 0
         if ann_kind != 4 && _kind() == i32(TokenKind.COMMA)
             _advance()
+            var is_neg: bool = false
+            if _kind() == i32(TokenKind.MINUS)
+                is_neg = true
+                _advance()
             if _kind() != i32(TokenKind.LIT_INT)
                 _error("expected integer priority")
                 return false
             sig_priority = _val()
+            if is_neg
+                sig_priority = -sig_priority
             _advance()
         if !_expect(i32(TokenKind.RPAREN))
             return false
