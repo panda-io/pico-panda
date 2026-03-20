@@ -1,36 +1,11 @@
 // ── ppd_host.h ────────────────────────────────────────────────────────────────
-// C helpers for the ppd host runtime (timing, SIGINT, boot.ppd path).
+// C helpers for the ppd host runtime (boot.ppd path discovery).
 
 #ifndef PPD_HOST_H
 #define PPD_HOST_H
 
-#include <sys/time.h>
-#include <signal.h>
 #include <string.h>
 #include <stdint.h>
-
-// ── Timing ────────────────────────────────────────────────────────────────────
-
-// Returns elapsed microseconds since first call (never wraps in practice).
-static int64_t _ppd_time_us(void) {
-    static int _ppd_time_init = 0;
-    static struct timeval _ppd_time_start;
-    if (!_ppd_time_init) {
-        gettimeofday(&_ppd_time_start, NULL);
-        _ppd_time_init = 1;
-    }
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    return (int64_t)(now.tv_sec - _ppd_time_start.tv_sec) * 1000000LL
-         + (now.tv_usec - _ppd_time_start.tv_usec);
-}
-
-// ── SIGINT handling ───────────────────────────────────────────────────────────
-
-static volatile int _ppd_exit_flag_val = 0;
-static void _ppd_sigint_handler(int sig) { (void)sig; _ppd_exit_flag_val = 1; }
-static void _ppd_install_sigint(void) { signal(SIGINT, _ppd_sigint_handler); }
-static int  _ppd_exit_flag(void) { return _ppd_exit_flag_val; }
 
 // ── boot.ppd path ─────────────────────────────────────────────────────────────
 

@@ -16,9 +16,10 @@ import vm.config::MAX_CODE
 import console::*
 import hosted.file::*
 import hosted.args::*
+import hosted.time::*
+import hosted.signal::*
 import string::*
 
-@include("unistd.h")
 @include("ppd_host.h")
 @include("boot_embedded.h")
 
@@ -32,18 +33,6 @@ fun _boot_embedded_src() u8[]
     return {_boot_embedded_ptr(), _boot_embedded_len()}
 
 // ── Host helpers ──────────────────────────────────────────────────────────────
-
-@extern("usleep({us})")
-fun _usleep(us: u32)
-
-@extern("_ppd_time_us()")
-fun _ppd_time_us(): i64
-
-@extern("_ppd_install_sigint()")
-fun _ppd_install_sigint()
-
-@extern("_ppd_exit_flag()")
-fun _ppd_exit_flag(): bool
 
 @extern("_ppd_init_boot_path(__mp_argv[0])")
 fun _ppd_init_boot_path()
@@ -183,19 +172,19 @@ fun _cmd_run(path: u8[], fps: i32)
 
     val target_us: i64 = i64(1000000) / i64(fps)
     val dt: fixed = fixed(65536 / fps)   // 1/fps as 16.16 fixed
-    _ppd_install_sigint()
+    catch_signals()
 
     // Deadline-based loop: advance deadline by target_us each tick so
-    // _usleep overshoots never accumulate into wall-clock drift.
-    var deadline: i64 = _ppd_time_us()
-    while !_ppd_exit_flag() && !vm_exit_requested()
+    // sleep_us overshoots never accumulate into wall-clock drift.
+    var deadline: i64 = time_us()
+    while !exit_requested() && !vm_exit_requested()
         deadline = deadline + target_us
         vm_tick(dt)
-        val remaining: i64 = deadline - _ppd_time_us()
+        val remaining: i64 = deadline - time_us()
         if remaining > 0
-            _usleep(u32(remaining))
+            sleep_us(u32(remaining))
         else
-            deadline = _ppd_time_us()  // behind schedule: reset to avoid catch-up spiral
+            deadline = time_us()  // behind schedule: reset to avoid catch-up spiral
 
 // ── Init command ──────────────────────────────────────────────────────────────
 
