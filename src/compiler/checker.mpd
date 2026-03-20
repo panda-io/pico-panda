@@ -33,9 +33,12 @@ class Checker()
     // Inferred type per expression node handle (indexed by handle int).
     var _expr_types: HeapList<i32>
 
-    var _errors:  i32 = 0
-    var _cur_ret: i32 = TYPE_NONE  // return type of current function
-    var _in_loop: i32 = 0          // loop nesting depth (for break/continue)
+    var _errors:      i32 = 0
+    var _cur_ret:     i32 = TYPE_NONE  // return type of current function
+    var _in_loop:     i32 = 0          // loop nesting depth (for break/continue)
+    var _cur_line:    i32 = 0          // source line of node being checked
+    var _error_loc:   fun(i32)
+    var _has_err_loc: bool = false
 
     fun init(heap: &HeapAllocator, scan: &Scanner, nodes: &NodePool, decls: &DeclList)
         _heap  = heap
@@ -45,6 +48,10 @@ class Checker()
         _types.init(heap)
         _syms.init(heap)
         _expr_types.init(heap)
+
+    fun set_error_loc(fn: fun(i32))
+        _error_loc = fn
+        _has_err_loc = true
 
     fun check() bool
         _errors = 0
@@ -72,6 +79,8 @@ class Checker()
     // ── Helpers ───────────────────────────────────────────────────────────
 
     fun _error(msg: u8[])
+        if _has_err_loc && _cur_line != 0
+            _error_loc(_cur_line)
         print_str("check error: ")
         print_str(msg)
         print_str("\n")
@@ -103,6 +112,11 @@ class Checker()
             if k == i32(DeclKind.DATA)
                 val name_si: i32 = _decls.d0(i)
                 val name: u8[] = _scan.str_get(name_si)
+                if _types.contains(name)
+                    _cur_line = _decls.line(i)
+                    _error("duplicate type name")
+                    i++
+                    continue
                 val type_id: i32 = _types.register(name, i32(TypeCategory.DATA))
                 val fields_start: i32 = _decls.d1(i)
                 val fields_count: i32 = _decls.d2(i)
@@ -115,6 +129,11 @@ class Checker()
             else if k == i32(DeclKind.ENUM_DECL)
                 val name_si: i32 = _decls.d0(i)
                 val name: u8[] = _scan.str_get(name_si)
+                if _types.contains(name)
+                    _cur_line = _decls.line(i)
+                    _error("duplicate type name")
+                    i++
+                    continue
                 val type_id: i32 = _types.register(name, i32(TypeCategory.ENUM))
                 val variants_start: i32 = _decls.d1(i)
                 val variants_count: i32 = _decls.d2(i)
@@ -155,12 +174,22 @@ class Checker()
             if k == i32(DeclKind.FUN)
                 val name_si: i32 = _decls.d0(i)
                 val name: u8[] = _scan.str_get(name_si)
+                if _syms.lookup_global(name) >= 0
+                    _cur_line = _decls.line(i)
+                    _error("duplicate function")
+                    i++
+                    continue
                 val ret_raw: i32 = _decls.ret(i)
                 val ret_t: i32 = _resolve_type(ret_raw)
                 _syms.define_global(name_si, name, i32(SymbolKind.FUN), ret_t, i, 0)
             else if k == i32(DeclKind.GLOBAL_VAR)
                 val name_si: i32 = _decls.d0(i)
                 val name: u8[] = _scan.str_get(name_si)
+                if _syms.lookup_global(name) >= 0
+                    _cur_line = _decls.line(i)
+                    _error("duplicate global variable")
+                    i++
+                    continue
                 val type_raw: i32 = _decls.d1(i)
                 val type_id: i32 = _resolve_type(type_raw)
                 val is_val: i32 = _decls.d3(i)
@@ -213,6 +242,9 @@ class Checker()
     fun _check_stmt(h: i32)
         if h < 0
             return
+        val nl: i32 = _nodes.line(h)
+        if nl != 0
+            _cur_line = nl
         val k: i32 = _nodes.kind(h)
         if k == i32(StmtKind.BLOCK)
             _check_block(h)
@@ -349,6 +381,9 @@ class Checker()
     fun _check_expr(h: i32) i32
         if h < 0
             return TYPE_NONE
+        val nl: i32 = _nodes.line(h)
+        if nl != 0
+            _cur_line = nl
         val k: i32 = _nodes.kind(h)
         var t: i32 = TYPE_NONE
         if k == i32(ExprKind.LIT_INT)

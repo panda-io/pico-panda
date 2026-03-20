@@ -14,6 +14,8 @@ import vm.vm::vm_load_sys
 import vm.vm::vm_boot_sys
 import console
 import string::equals
+import string::starts_with
+import string::sub
 
 // ── Output capture ────────────────────────────────────────────────────────────
 
@@ -173,6 +175,56 @@ fun test_compile_tick_count()
 @test
 fun test_compile_interval()
     assert(pp_compile("@interval(500)\nfun on_timer()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+
+// ── Priority annotation tests ──────────────────────────────────────────────────
+
+@test
+fun test_compile_tick_with_priority()
+    assert(pp_compile("@tick(1, 10)\nfun on_high()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+
+@test
+fun test_compile_signal_with_priority()
+    assert(pp_compile("const SIGNAL_SYS_START: int = 1\n@signal(SIGNAL_SYS_START, 5)\nfun on_start()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+
+@test
+fun test_compile_interval_with_priority()
+    assert(pp_compile("@interval(500, 2)\nfun on_timer()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+
+// Return the byte offset of needle in haystack, or -1 if not found.
+fun _find_str(hay: u8[], needle: u8[]) i32
+    val hlen: u32 = hay.size()
+    val nlen: u32 = needle.size()
+    if nlen == u32(0) || nlen > hlen
+        return -1
+    var i: u32 = u32(0)
+    while i <= hlen - nlen
+        if starts_with(sub(hay, i, hlen - i), needle)
+            return i32(i)
+        i++
+    return -1
+
+@test
+fun test_compile_priority_ordering()
+    var c: Compiler
+    val src: u8[] = "@tick(1, 10)\nfun high()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n@tick(1, 1)\nfun low()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"
+    assert(c.compile(src))
+    val out: u8[] = c.asm_output()
+    val pos_high: i32 = _find_str(out, "__wrap_high")
+    val pos_low:  i32 = _find_str(out, "__wrap_low")
+    assert(pos_high >= 0)
+    assert(pos_low >= 0)
+    assert(pos_high < pos_low)
+
+@test
+fun test_compile_priority_equal_stable()
+    var c: Compiler
+    val src: u8[] = "@tick(1)\nfun first()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n@tick(1)\nfun second()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"
+    assert(c.compile(src))
+    val out: u8[] = c.asm_output()
+    val pos_first:  i32 = _find_str(out, "__wrap_first")
+    val pos_second: i32 = _find_str(out, "__wrap_second")
+    assert(pos_first >= 0 && pos_second >= 0)
+    assert(pos_first < pos_second)
 
 // ── End-to-end test ───────────────────────────────────────────────────────────
 

@@ -30,12 +30,18 @@ import hosted.file::*
 import console::*
 
 class Compiler()
-    var _heap:    HeapAllocator
-    var _scanner: Scanner
-    var _parser:  Parser
-    var _checker: Checker
-    var _codegen: Codegen
-    var _errors:  i32 = 0
+    var _heap:         HeapAllocator
+    var _scanner:      Scanner
+    var _parser:       Parser
+    var _checker:      Checker
+    var _codegen:      Codegen
+    var _errors:       i32 = 0
+    var _err_loc:      fun(i32)
+    var _has_err_loc:  bool = false
+
+    fun set_error_loc(fn: fun(i32))
+        _err_loc = fn
+        _has_err_loc = true
 
     fun compile(src: u8[]) bool
         _errors = 0
@@ -48,12 +54,16 @@ class Compiler()
 
         // ── Phase 2: parse ────────────────────────────────────────────────
         _parser.init(&_heap, &_scanner)
+        if _has_err_loc
+            _parser.set_error_loc(_err_loc)
         if !_parser.parse()
             _errors = _errors + _parser.error_count()
             return false
 
         // ── Phase 3: check ────────────────────────────────────────────────
         _checker.init(&_heap, &_scanner, _parser.nodes(), _parser.decls())
+        if _has_err_loc
+            _checker.set_error_loc(_err_loc)
         if !_checker.check()
             _errors = _errors + _checker.error_count()
             return false

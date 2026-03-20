@@ -42,9 +42,11 @@ class DeclList()
     // Extra slot for return-type (fun only)
     var _ret:   HeapList<i32>
     // Signal annotation: ident string index (-1 = none), N value (-1 = none), kind (0=none,1=signal,2=interval)
-    var _ann_name: HeapList<i32>
-    var _ann_n:    HeapList<i32>
-    var _ann_kind: HeapList<i32>
+    var _ann_name:     HeapList<i32>
+    var _ann_n:        HeapList<i32>
+    var _ann_kind:     HeapList<i32>
+    var _ann_priority: HeapList<i32>
+    var _lines:        HeapList<i32>   // source line of declaration name
 
     fun init(heap: &HeapAllocator)
         _heap = heap
@@ -57,8 +59,10 @@ class DeclList()
         _ann_name.init(heap)
         _ann_n.init(heap)
         _ann_kind.init(heap)
+        _ann_priority.init(heap)
+        _lines.init(heap)
 
-    fun add(kind: i32, d0: i32, d1: i32, d2: i32, d3: i32, ret: i32) i32
+    fun add(kind: i32, d0: i32, d1: i32, d2: i32, d3: i32, ret: i32, line: i32) i32
         val i: i32 = i32(_kinds.size())
         _kinds.push(kind)
         _d0.push(d0)
@@ -69,12 +73,15 @@ class DeclList()
         _ann_name.push(-1)
         _ann_n.push(-1)
         _ann_kind.push(0)
+        _ann_priority.push(0)
+        _lines.push(line)
         return i
 
-    fun set_annotation(i: i32, name_si: i32, n: i32, kind: i32)
+    fun set_annotation(i: i32, name_si: i32, n: i32, kind: i32, priority: i32)
         _ann_name.set(u32(i), name_si)
         _ann_n.set(u32(i), n)
         _ann_kind.set(u32(i), kind)
+        _ann_priority.set(u32(i), priority)
 
     fun count() i32
         return i32(_kinds.size())
@@ -106,15 +113,28 @@ class DeclList()
     fun ann_kind(i: i32) i32
         return _ann_kind.get(u32(i))
 
+    fun ann_priority(i: i32) i32
+        return _ann_priority.get(u32(i))
+
+    fun line(i: i32) i32
+        return _lines.get(u32(i))
+
 // ── Parser ────────────────────────────────────────────────────────────────────
 
+// Default error location printer: "line N: "
+fun _default_error_loc(line: i32)
+    print_str("line ")
+    print_i32(line)
+    print_str(": ")
+
 class Parser()
-    var _scan:    &Scanner
-    var _nodes:   NodePool
-    var _decls:   DeclList
+    var _scan:          &Scanner
+    var _nodes:         NodePool
+    var _decls:         DeclList
     var _cur:            i32 = 0   // current token index
     var _errors:         i32 = 0
     var _last_array_dim: i32 = 0   // dim N from last T[N] parse (0 = unknown)
+    var _error_loc:      fun(i32)  // called with global line number before each error
 
     fun init(heap: &HeapAllocator, scan: &Scanner)
         _scan   = scan
@@ -122,6 +142,10 @@ class Parser()
         _decls.init(heap)
         _cur    = 0
         _errors = 0
+        _error_loc = _default_error_loc
+
+    fun set_error_loc(fn: fun(i32))
+        _error_loc = fn
 
     fun parse() bool
         while _kind() != i32(TokenKind.EOF)
@@ -177,15 +201,13 @@ class Parser()
             _advance()
 
     fun _error_expected(k: i32)
-        print_str("parse error: line ")
-        print_i32(_line())
-        print_str("\n")
+        _error_loc(_line())
+        print_str("error: unexpected token\n")
         _errors++
 
     fun _error(msg: u8[])
-        print_str("parse error: line ")
-        print_i32(_line())
-        print_str(": ")
+        _error_loc(_line())
+        print_str("error: ")
         print_str(msg)
         print_str("\n")
         _errors++
@@ -264,7 +286,7 @@ class Parser()
         if k == i32(TokenKind.AT)
             return _parse_annotated_fun()
         if k == i32(TokenKind.KW_FUN)
-            return _parse_fun_decl(-1, -1, 0)
+            return _parse_fun_decl(-1, -1, 0, 0)
         if k == i32(TokenKind.KW_DATA)
             return _parse_data_decl()
         if k == i32(TokenKind.KW_ENUM)
@@ -327,6 +349,14 @@ class Parser()
                 return false
             sig_n = _val()
             _advance()
+        var sig_priority: i32 = 0
+        if ann_kind != 4 && _kind() == i32(TokenKind.COMMA)
+            _advance()
+            if _kind() != i32(TokenKind.LIT_INT)
+                _error("expected integer priority")
+                return false
+            sig_priority = _val()
+            _advance()
         if !_expect(i32(TokenKind.RPAREN))
             return false
         _consume_newline()
@@ -334,13 +364,14 @@ class Parser()
         if _kind() != i32(TokenKind.KW_FUN)
             _error("expected fun after annotation")
             return false
-        return _parse_fun_decl(sig_ident_si, sig_n, ann_kind)
+        return _parse_fun_decl(sig_ident_si, sig_n, ann_kind, sig_priority)
 
-    fun _parse_fun_decl(ann_name_si: i32, ann_n: i32, ann_kind: i32) bool
+    fun _parse_fun_decl(ann_name_si: i32, ann_n: i32, ann_kind: i32, ann_priority: i32) bool
         _advance()  // 'fun'
         if _kind() != i32(TokenKind.IDENT)
             _error("expected function name")
             return false
+        val name_line: i32 = _line()
         val name_si: i32 = _val()
         _advance()
         if !_expect(i32(TokenKind.LPAREN))
@@ -378,9 +409,9 @@ class Parser()
             body = _parse_block()
             if body < 0
                 return false
-        val di: i32 = _decls.add(i32(DeclKind.FUN), name_si, params_start, params_count, body, ret_type)
+        val di: i32 = _decls.add(i32(DeclKind.FUN), name_si, params_start, params_count, body, ret_type, name_line)
         if ann_kind > 0
-            _decls.set_annotation(di, ann_name_si, ann_n, ann_kind)
+            _decls.set_annotation(di, ann_name_si, ann_n, ann_kind, ann_priority)
         return true
 
     fun _parse_data_decl() bool
@@ -388,6 +419,7 @@ class Parser()
         if _kind() != i32(TokenKind.IDENT)
             _error("expected data type name")
             return false
+        val name_line: i32 = _line()
         val name_si: i32 = _val()
         _advance()
         _consume_newline()
@@ -412,7 +444,7 @@ class Parser()
             fields_count++
             _consume_newline()
         _expect(i32(TokenKind.DEDENT))
-        _decls.add(i32(DeclKind.DATA), name_si, fields_start, fields_count, 0, 0)
+        _decls.add(i32(DeclKind.DATA), name_si, fields_start, fields_count, 0, 0, name_line)
         return true
 
     fun _parse_enum_decl() bool
@@ -420,6 +452,7 @@ class Parser()
         if _kind() != i32(TokenKind.IDENT)
             _error("expected enum name")
             return false
+        val name_line: i32 = _line()
         val name_si: i32 = _val()
         _advance()
         _consume_newline()
@@ -452,7 +485,7 @@ class Parser()
             variants_count++
             _consume_newline()
         _expect(i32(TokenKind.DEDENT))
-        _decls.add(i32(DeclKind.ENUM_DECL), name_si, variants_start, variants_count, 0, 0)
+        _decls.add(i32(DeclKind.ENUM_DECL), name_si, variants_start, variants_count, 0, 0, name_line)
         return true
 
     fun _parse_global_var() bool
@@ -463,6 +496,7 @@ class Parser()
         if _kind() != i32(TokenKind.IDENT)
             _error("expected variable name")
             return false
+        val var_line: i32 = _line()
         val name_si: i32 = _val()
         _advance()
         var type_id: i32 = TYPE_NONE
@@ -477,7 +511,7 @@ class Parser()
             _advance()
             init_e = _parse_expr()
         _consume_newline()
-        _decls.add(i32(DeclKind.GLOBAL_VAR), name_si, type_id, init_e, is_val, _last_array_dim)
+        _decls.add(i32(DeclKind.GLOBAL_VAR), name_si, type_id, init_e, is_val, _last_array_dim, var_line)
         return true
 
     fun _parse_global_const() bool
@@ -485,6 +519,7 @@ class Parser()
         if _kind() != i32(TokenKind.IDENT)
             _error("expected constant name")
             return false
+        val const_line: i32 = _line()
         val name_si: i32 = _val()
         _advance()
         var type_id: i32 = TYPE_NONE
@@ -497,7 +532,7 @@ class Parser()
         _advance()
         val init_e: i32 = _parse_expr()
         _consume_newline()
-        _decls.add(i32(DeclKind.GLOBAL_VAR), name_si, type_id, init_e, 1, 0)
+        _decls.add(i32(DeclKind.GLOBAL_VAR), name_si, type_id, init_e, 1, 0, const_line)
         return true
 
     // ── Block ─────────────────────────────────────────────────────────────
@@ -555,18 +590,23 @@ class Parser()
         if k == i32(TokenKind.KW_RETURN)
             return _parse_return()
         if k == i32(TokenKind.KW_BREAK)
+            val bl: i32 = _line()
             _advance()
             _consume_newline()
+            _nodes.set_line(bl)
             return _nodes.stmt_break()
         if k == i32(TokenKind.KW_CONTINUE)
+            val cl: i32 = _line()
             _advance()
             _consume_newline()
+            _nodes.set_line(cl)
             return _nodes.stmt_continue()
         if k == i32(TokenKind.KW_ASM)
             return _parse_asm()
         return _parse_assign_or_expr()
 
     fun _parse_asm() i32
+        val asm_line: i32 = _line()
         _advance()  // 'asm'
         if !_expect(i32(TokenKind.LPAREN))
             return -1
@@ -578,9 +618,11 @@ class Parser()
         if !_expect(i32(TokenKind.RPAREN))
             return -1
         _consume_newline()
+        _nodes.set_line(asm_line)
         return _nodes.stmt_asm(si)
 
     fun _parse_local_var() i32
+        val var_line: i32 = _line()
         var is_val: i32 = 0
         if _kind() == i32(TokenKind.KW_VAL)
             is_val = 1
@@ -602,9 +644,11 @@ class Parser()
             _advance()
             init_e = _parse_expr()
         _consume_newline()
+        _nodes.set_line(var_line)
         return _nodes.stmt_var(name_si, type_id, init_e, is_val)
 
     fun _parse_local_const() i32
+        val const_line: i32 = _line()
         _advance()  // 'const'
         if _kind() != i32(TokenKind.IDENT)
             _error("expected name")
@@ -621,9 +665,11 @@ class Parser()
         _advance()
         val e: i32 = _parse_expr()
         _consume_newline()
+        _nodes.set_line(const_line)
         return _nodes.stmt_const(name_si, type_id, e)
 
     fun _parse_if() i32
+        val if_line: i32 = _line()
         _advance()  // 'if'
         val cond: i32 = _parse_expr()
         _consume_newline()
@@ -637,16 +683,20 @@ class Parser()
                 else_s = _parse_if()   // else if chain
             else
                 else_s = _parse_block()
+        _nodes.set_line(if_line)
         return _nodes.stmt_if(cond, then_s, else_s)
 
     fun _parse_while() i32
+        val while_line: i32 = _line()
         _advance()  // 'while'
         val cond: i32 = _parse_expr()
         _consume_newline()
         val body: i32 = _parse_block()
+        _nodes.set_line(while_line)
         return _nodes.stmt_while(cond, body)
 
     fun _parse_for() i32
+        val for_line: i32 = _line()
         _advance()  // 'for'
         // 'for i in 0..10'   or   'for item in nums'   or   'for i, item in nums'
         if _kind() != i32(TokenKind.IDENT)
@@ -672,16 +722,19 @@ class Parser()
             val e2: i32 = _parse_expr()
             _consume_newline()
             val body: i32 = _parse_block()
+            _nodes.set_line(for_line)
             return _nodes.stmt_for_range(var1_si, e1, e2, body)
         // collection form: for item in iterable  or  for i, item in iterable
         _consume_newline()
         val body: i32 = _parse_block()
+        _nodes.set_line(for_line)
         if var2_si >= 0
             // for i, item in coll → idx=var1, item=var2
             return _nodes.stmt_for_in(var2_si, e1, body, var1_si)
         return _nodes.stmt_for_in(var1_si, e1, body, -1)
 
     fun _parse_match() i32
+        val match_line: i32 = _line()
         _advance()  // 'match'
         val expr: i32 = _parse_expr()
         _consume_newline()
@@ -707,6 +760,7 @@ class Parser()
         while ai < arms_count
             _nodes.child_append(arm_buf[ai])
             ai++
+        _nodes.set_line(match_line)
         return _nodes.stmt_match(expr, arms_start, arms_count)
 
     fun _parse_match_arm() i32
@@ -733,14 +787,20 @@ class Parser()
         else
             val e: i32 = _parse_stmt()
             body = e
+        if pattern >= 0
+            _nodes.set_line(_nodes.line(pattern))
+        else
+            _nodes.set_line(_nodes.line(body))
         return _nodes.stmt_match_arm(pattern, body)
 
     fun _parse_return() i32
+        val ret_line: i32 = _line()
         _advance()  // 'return'
         var e: i32 = -1
         if _kind() != i32(TokenKind.NEWLINE) && _kind() != i32(TokenKind.DEDENT) && _kind() != i32(TokenKind.EOF)
             e = _parse_expr()
         _consume_newline()
+        _nodes.set_line(ret_line)
         return _nodes.stmt_return(e)
 
     // Assignment or expression statement: lhs [op=] rhs | expr
@@ -752,8 +812,10 @@ class Parser()
             _advance()
             val rhs: i32 = _parse_expr()
             _consume_newline()
+            _nodes.set_line(_nodes.line(lhs))
             return _nodes.stmt_assign(lhs, rhs, k)
         _consume_newline()
+        _nodes.set_line(_nodes.line(lhs))
         return _nodes.stmt_expr(lhs)
 
     // ── Expression parsing (precedence climbing) ──────────────────────────
@@ -765,8 +827,10 @@ class Parser()
         var left: i32 = _parse_and()
         while _kind() == i32(TokenKind.OR_OR)
             val op: i32 = _kind()
+            val ol: i32 = _line()
             _advance()
             val right: i32 = _parse_and()
+            _nodes.set_line(ol)
             left = _nodes.expr_binary(op, left, right)
         return left
 
@@ -774,8 +838,10 @@ class Parser()
         var left: i32 = _parse_eq()
         while _kind() == i32(TokenKind.AND_AND)
             val op: i32 = _kind()
+            val ol: i32 = _line()
             _advance()
             val right: i32 = _parse_eq()
+            _nodes.set_line(ol)
             left = _nodes.expr_binary(op, left, right)
         return left
 
@@ -783,8 +849,10 @@ class Parser()
         var left: i32 = _parse_cmp()
         while _kind() == i32(TokenKind.EQEQ) || _kind() == i32(TokenKind.NEQ)
             val op: i32 = _kind()
+            val ol: i32 = _line()
             _advance()
             val right: i32 = _parse_cmp()
+            _nodes.set_line(ol)
             left = _nodes.expr_binary(op, left, right)
         return left
 
@@ -792,8 +860,10 @@ class Parser()
         var left: i32 = _parse_bitor()
         while _kind() == i32(TokenKind.LT) || _kind() == i32(TokenKind.LE) || _kind() == i32(TokenKind.GT) || _kind() == i32(TokenKind.GE)
             val op: i32 = _kind()
+            val ol: i32 = _line()
             _advance()
             val right: i32 = _parse_bitor()
+            _nodes.set_line(ol)
             left = _nodes.expr_binary(op, left, right)
         return left
 
@@ -801,8 +871,10 @@ class Parser()
         var left: i32 = _parse_xor()
         while _kind() == i32(TokenKind.PIPE)
             val op: i32 = _kind()
+            val ol: i32 = _line()
             _advance()
             val right: i32 = _parse_xor()
+            _nodes.set_line(ol)
             left = _nodes.expr_binary(op, left, right)
         return left
 
@@ -810,8 +882,10 @@ class Parser()
         var left: i32 = _parse_bitand()
         while _kind() == i32(TokenKind.CARET)
             val op: i32 = _kind()
+            val ol: i32 = _line()
             _advance()
             val right: i32 = _parse_bitand()
+            _nodes.set_line(ol)
             left = _nodes.expr_binary(op, left, right)
         return left
 
@@ -819,8 +893,10 @@ class Parser()
         var left: i32 = _parse_shift()
         while _kind() == i32(TokenKind.AMP)
             val op: i32 = _kind()
+            val ol: i32 = _line()
             _advance()
             val right: i32 = _parse_shift()
+            _nodes.set_line(ol)
             left = _nodes.expr_binary(op, left, right)
         return left
 
@@ -828,8 +904,10 @@ class Parser()
         var left: i32 = _parse_add()
         while _kind() == i32(TokenKind.LSHIFT) || _kind() == i32(TokenKind.RSHIFT)
             val op: i32 = _kind()
+            val ol: i32 = _line()
             _advance()
             val right: i32 = _parse_add()
+            _nodes.set_line(ol)
             left = _nodes.expr_binary(op, left, right)
         return left
 
@@ -837,8 +915,10 @@ class Parser()
         var left: i32 = _parse_mul()
         while _kind() == i32(TokenKind.PLUS) || _kind() == i32(TokenKind.MINUS)
             val op: i32 = _kind()
+            val ol: i32 = _line()
             _advance()
             val right: i32 = _parse_mul()
+            _nodes.set_line(ol)
             left = _nodes.expr_binary(op, left, right)
         return left
 
@@ -846,27 +926,37 @@ class Parser()
         var left: i32 = _parse_unary()
         while _kind() == i32(TokenKind.STAR) || _kind() == i32(TokenKind.SLASH) || _kind() == i32(TokenKind.PERCENT)
             val op: i32 = _kind()
+            val ol: i32 = _line()
             _advance()
             val right: i32 = _parse_unary()
+            _nodes.set_line(ol)
             left = _nodes.expr_binary(op, left, right)
         return left
 
     fun _parse_unary() i32
         if _kind() == i32(TokenKind.MINUS)
+            val ul: i32 = _line()
             _advance()
             val e: i32 = _parse_unary()
+            _nodes.set_line(ul)
             return _nodes.expr_unary(i32(TokenKind.MINUS), e)
         if _kind() == i32(TokenKind.BANG)
+            val ul: i32 = _line()
             _advance()
             val e: i32 = _parse_unary()
+            _nodes.set_line(ul)
             return _nodes.expr_unary(i32(TokenKind.BANG), e)
         if _kind() == i32(TokenKind.TILDE)
+            val ul: i32 = _line()
             _advance()
             val e: i32 = _parse_unary()
+            _nodes.set_line(ul)
             return _nodes.expr_unary(i32(TokenKind.TILDE), e)
         if _kind() == i32(TokenKind.AMP)
+            val ul: i32 = _line()
             _advance()
             val e: i32 = _parse_unary()
+            _nodes.set_line(ul)
             return _nodes.expr_ref(e)
         return _parse_postfix()
 
@@ -877,9 +967,9 @@ class Parser()
                 _advance()
                 if _kind() == i32(TokenKind.IDENT)
                     val field_si: i32 = _val()
+                    val fl: i32 = _line()
                     _advance()
-                    // Check for .len (slice length)
-                    // We compare by encoding "len" — handled at codegen time
+                    _nodes.set_line(fl)
                     base = _nodes.expr_field(base, field_si)
                 else
                     _error("expected field name")
@@ -889,6 +979,7 @@ class Parser()
                 val idx: i32 = _parse_expr()
                 if !_expect(i32(TokenKind.RBRACKET))
                     break
+                _nodes.set_line(_nodes.line(base))
                 base = _nodes.expr_index(base, idx)
             else if _kind() == i32(TokenKind.LPAREN)
                 // call: base must be an IDENT at this point
@@ -896,6 +987,7 @@ class Parser()
                     _error("can only call named functions")
                     break
                 val name_si: i32 = _nodes.d0(base)
+                val call_line: i32 = _nodes.line(base)
                 _advance()
                 // Collect args in a local buffer; nested call parsing may append
                 // grandchild entries to the shared children list before we can
@@ -916,6 +1008,7 @@ class Parser()
                 while ai < args_count
                     _nodes.child_append(arg_buf[ai])
                     ai++
+                _nodes.set_line(call_line)
                 base = _nodes.expr_call(name_si, args_start, args_count)
             else
                 break
@@ -926,24 +1019,34 @@ class Parser()
         // Integer literal
         if k == i32(TokenKind.LIT_INT)
             val v: i32 = _val()
+            val pl: i32 = _line()
             _advance()
+            _nodes.set_line(pl)
             return _nodes.expr_lit_int(v)
         // Fixed-point literal
         if k == i32(TokenKind.LIT_FIXED)
             val v: i32 = _val()
+            val pl: i32 = _line()
             _advance()
+            _nodes.set_line(pl)
             return _nodes.expr_lit_fixed(v)
         // String literal
         if k == i32(TokenKind.LIT_STR)
             val si: i32 = _val()
+            val pl: i32 = _line()
             _advance()
+            _nodes.set_line(pl)
             return _nodes.expr_lit_str(si)
         // Boolean literals
         if k == i32(TokenKind.LIT_TRUE)
+            val pl: i32 = _line()
             _advance()
+            _nodes.set_line(pl)
             return _nodes.expr_lit_bool(1)
         if k == i32(TokenKind.LIT_FALSE)
+            val pl: i32 = _line()
             _advance()
+            _nodes.set_line(pl)
             return _nodes.expr_lit_bool(0)
         // Cast: int(e), fixed(e), byte(e)
         if k == i32(TokenKind.KW_INT) || k == i32(TokenKind.KW_FIXED) || k == i32(TokenKind.KW_BYTE) || k == i32(TokenKind.KW_BOOL)
@@ -954,20 +1057,25 @@ class Parser()
                 type_id = TYPE_BYTE
             else if k == i32(TokenKind.KW_BOOL)
                 type_id = TYPE_BOOL
+            val pl: i32 = _line()
             _advance()
             if !_expect(i32(TokenKind.LPAREN))
                 return -1
             val e: i32 = _parse_expr()
             if !_expect(i32(TokenKind.RPAREN))
                 return -1
+            _nodes.set_line(pl)
             return _nodes.expr_cast(type_id, e)
         // Identifier (variable, enum member accessed via postfix .field)
         if k == i32(TokenKind.IDENT)
             val si: i32 = _val()
+            val pl: i32 = _line()
             _advance()
+            _nodes.set_line(pl)
             return _nodes.expr_ident(si)
         // Slice literal: {&expr, len_expr}
         if k == i32(TokenKind.AMP_BRACE)
+            val pl: i32 = _line()
             _advance()
             val addr_e: i32 = _parse_expr()
             if !_expect(i32(TokenKind.COMMA))
@@ -975,6 +1083,7 @@ class Parser()
             val len_e: i32 = _parse_expr()
             if !_expect(i32(TokenKind.RBRACE))
                 return -1
+            _nodes.set_line(pl)
             return _nodes.expr_slice_lit(addr_e, len_e)
         // Parenthesised expression
         if k == i32(TokenKind.LPAREN)

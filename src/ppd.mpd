@@ -29,6 +29,38 @@ var _run_buf:  u8[MAX_CODE]
 var _src_buf:  u8[65536]    // combined source for compilation
 var _compiler: Compiler
 
+// ── File map (for error location reporting) ───────────────────────────────────
+
+var _fm_starts: i32[33]   // global start line for each file (index 0 = boot)
+var _fm_count:  i32 = 0
+
+// Count newlines in _src_buf[start..start+len].
+fun _count_nl(start: i32, len: i32) i32
+    var c: i32 = 0
+    var j: i32 = 0
+    while j < len
+        if _src_buf[u32(start + j)] == u8(10)
+            c++
+        j++
+    return c
+
+// Error location callback: translates global line → "filename:local_line: ".
+fun _error_loc(line: i32)
+    var fi: i32 = 0
+    var i: i32 = 1
+    while i < _fm_count
+        if _fm_starts[u32(i)] <= line
+            fi = i
+        i++
+    val local_line: i32 = line - _fm_starts[u32(fi)] + 1
+    if fi == 0
+        print_str("<boot>:")
+    else
+        print_str(_cfg.src(fi - 1))
+        print_str(":")
+    print_i32(local_line)
+    print_str(": ")
+
 // ── Compile command ───────────────────────────────────────────────────────────
 
 // Read file into _src_buf at offset; returns bytes read, or -1 on open error.
@@ -62,8 +94,12 @@ fun _cmd_compile()
     // Build combined source: boot.ppd + all .ppd files
     var pos: i32 = 0
     val buf_end: i32 = 65536
+    _fm_count = 0
+    var cur_line: i32 = 1
 
     // Prepend boot program
+    _fm_starts[u32(0)] = cur_line
+    _fm_count = 1
     var k: i32 = 0
     while k < i32(boot_program.size()) && pos + k < buf_end
         _src_buf[pos + k] = boot_program[u32(k)]
@@ -71,11 +107,16 @@ fun _cmd_compile()
     pos = pos + k
     _src_buf[pos] = u8(10)
     pos++
+    cur_line = cur_line + _count_nl(0, k) + 1
 
     // Append each source file
     var n: i32 = 0
     i = 0
     while i < _cfg.src_count()
+        if _fm_count < 33
+            _fm_starts[u32(_fm_count)] = cur_line
+            _fm_count++
+        val file_start: i32 = pos
         n = _read_into_src(_cfg.src(i), pos, buf_end - pos)
         if n < 0
             print_str("error: cannot open '")
@@ -86,9 +127,11 @@ fun _cmd_compile()
         pos = pos + n
         _src_buf[pos] = u8(10)
         pos++
+        cur_line = cur_line + _count_nl(file_start, n) + 1
         i++
 
     // Compile
+    _compiler.set_error_loc(_error_loc)
     val src: u8[] = {&_src_buf[0], u32(pos)}
     if !_compiler.compile(src)
         print_str("compile error (")
