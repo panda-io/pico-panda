@@ -1,6 +1,6 @@
-var cooldown: int = 10
+var cooldown: int = 60
     
-@tick(10)
+@tick(100)
 fun on_tick()
     console_print_int(cooldown)
     console_print_str("\n")

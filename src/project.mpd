@@ -3,9 +3,11 @@
 //
 // Format (flat key = value, # comments, blank lines ignored):
 //   src    = path/to/file.ppd   (repeat for multiple files)
+//   src    = src/               (scan folder for *.ppd files; default: src/)
 //   output = bin/app.ppbc
 
 import hosted.file::*
+import hosted.folder::*
 import string::*
 
 const _MAX_SRC:  i32 = 64
@@ -20,6 +22,34 @@ class PpdConfig()
     var _out_len:   u32 = 0
     var _line:      u8[_CFG_LINE]
     var _ok:        bool = false
+
+    // Scan a folder for *.ppd files and add each as a source entry.
+    // Path must end with '/'.
+    fun _scan_folder(folder: u8[])
+        var dir: Folder
+        if !dir.open(folder)
+            return
+        var name_buf: u8[256]
+        var n: u32 = dir.next({&name_buf[0], u32(256)})
+        while n > u32(0)
+            val name: u8[] = {&name_buf[0], n}
+            if ends_with(name, ".ppd")
+                // build full path: folder + name
+                var path_buf: u8[_MAX_PATH]
+                var pi: u32 = 0
+                var fi: u32 = 0
+                while fi < folder.size() && pi < u32(_MAX_PATH) - u32(1)
+                    path_buf[pi] = folder[fi]
+                    fi++
+                    pi++
+                var ni: u32 = 0
+                while ni < n && pi < u32(_MAX_PATH) - u32(1)
+                    path_buf[pi] = name[ni]
+                    ni++
+                    pi++
+                _add_src({&path_buf[0], pi})
+            n = dir.next({&name_buf[0], u32(256)})
+        dir.close()
 
     fun _add_src(s: u8[])
         if _src_count >= _MAX_SRC
@@ -78,7 +108,10 @@ class PpdConfig()
             if value.size() == u32(0)
                 continue
             if equals(key, "src")
-                _add_src(value)
+                if ends_with(value, "/")
+                    _scan_folder(value)
+                else
+                    _add_src(value)
             else if equals(key, "output")
                 _set_output(value)
 
