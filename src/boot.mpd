@@ -41,8 +41,8 @@ fun signal_create_handler(id: int, addr: int)
     asm("CALL_MODULE SIGNAL CREATE_HANDLER")
 
 // Exit the current signal handler (task finishes).
+@asm("CALL_MODULE SIGNAL EXIT_HANDLER")
 fun signal_handler_exit()
-    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
 
 // Send a signal with up to 4 register params.
 // Params are stored via STORE_REG before SEND_SIGNAL copies task.regs to signal.regs.
