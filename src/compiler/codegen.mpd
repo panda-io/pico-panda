@@ -245,6 +245,14 @@ class Codegen()
         // Explicit returns and EXIT_HANDLER paths make this unreachable for them.
         _put_str("    PUSH 0\n    RET\n\n")
 
+    // Returns false for @asm calls with no return type (they don't push a value).
+    fun _expr_pushes_value(h: i32) bool
+        if _nodes.kind(h) == i32(ExprKind.CALL)
+            val di: i32 = _find_fun_decl(_nodes.d0(h))
+            if di >= 0 && _decls.ann_kind(di) == 4
+                return _decls.ret(di) != TYPE_NONE
+        return true
+
     // ── Statement generation ──────────────────────────────────────────────────
 
     fun _gen_stmt(h: i32)
@@ -277,7 +285,8 @@ class Codegen()
             _put_str("\n")
         else if k == i32(StmtKind.EXPR_STMT)
             _gen_expr(_nodes.d0(h))
-            _put_str("    DROP\n")
+            if _expr_pushes_value(_nodes.d0(h))
+                _put_str("    DROP\n")
 
     fun _gen_block(h: i32)
         val ss: i32 = _nodes.d0(h)
