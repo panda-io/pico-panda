@@ -2,9 +2,8 @@
 // ppd.cfg reader for pico-panda assembler projects.
 //
 // Format (flat key = value, # comments, blank lines ignored):
-//   src    = path/to/file.ppasm   (repeat for multiple files)
-//   output = bin/app.bin
-//   entry  = main                 (optional, defaults to "main")
+//   src    = path/to/file.ppd   (repeat for multiple files)
+//   output = bin/app.ppbc
 
 import hosted.file::*
 import string::*
@@ -19,8 +18,6 @@ class PpdConfig()
     var _src_count: i32 = 0
     var _output:    u8[_MAX_PATH]
     var _out_len:   u32 = 0
-    var _entry:     u8[_MAX_PATH]
-    var _ent_len:   u32 = 0
     var _line:      u8[_CFG_LINE]
     var _ok:        bool = false
 
@@ -48,22 +45,11 @@ class PpdConfig()
             j++
         _out_len = n
 
-    fun _set_entry(s: u8[])
-        var n: u32 = s.size()
-        if n >= u32(_MAX_PATH)
-            n = u32(_MAX_PATH) - u32(1)
-        var j: u32 = u32(0)
-        while j < n
-            _entry[j] = s[j]
-            j++
-        _ent_len = n
-
     // Returns true if the file was opened; false otherwise.
     // Call valid() after load() to check that required keys were found.
     fun load(path: u8[]) bool
         _src_count = 0
         _out_len   = u32(0)
-        _ent_len   = u32(0)
         _ok        = false
         var f: File
         if !f.open(path, READ)
@@ -95,8 +81,7 @@ class PpdConfig()
                 _add_src(value)
             else if equals(key, "output")
                 _set_output(value)
-            else if equals(key, "entry")
-                _set_entry(value)
+
         f.close()
         _ok = _src_count > 0 && _out_len > u32(0)
         return true
@@ -114,7 +99,3 @@ class PpdConfig()
     fun output() u8[]
         return {&_output[0], _out_len}
 
-    fun entry() u8[]
-        if _ent_len == u32(0)
-            return "main"
-        return {&_entry[0], _ent_len}

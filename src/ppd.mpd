@@ -15,6 +15,7 @@ import vm.vm::*
 import vm.config::MAX_CODE
 import console::*
 import hosted.file::*
+import hosted.args::*
 import string::*
 
 @include("unistd.h")
@@ -29,21 +30,6 @@ fun _boot_embedded_len(): u32
 
 fun _boot_embedded_src() u8[]
     return {_boot_embedded_ptr(), _boot_embedded_len()}
-
-// Access C main() argc/argv via the statics emitted by the compiler.
-@extern("__mp_argc")
-fun _argc(): i32
-
-@extern("(uint32_t)strlen(__mp_argv[{i}])")
-fun _argv_len(i: i32): u32
-
-@extern("((uint8_t*)__mp_argv[{i}])")
-fun _argv_ptr(i: i32): &u8
-
-fun _argv(i: i32): u8[]
-    val len: u32 = _argv_len(i)
-    val ptr: &u8 = _argv_ptr(i)
-    return {ptr, len}
 
 // ── Host helpers ──────────────────────────────────────────────────────────────
 
@@ -249,11 +235,11 @@ fun _usage()
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 fun main()
-    val argc: i32 = _argc()
-    if argc < 2
+    val n: i32 = arg_count()
+    if n < 2
         _usage()
         return
-    val cmd: u8[] = _argv(1)
+    val cmd: u8[] = arg_value(1)
 
     if equals(cmd, "init")
         _cmd_init()
@@ -268,10 +254,10 @@ fun main()
         var fps: i32 = 100
         // parse positional file arg and optional -fps N
         var j: i32 = 2
-        while j < argc
-            val a: u8[] = _argv(j)
-            if equals(a, "-fps") && j + 1 < argc
-                fps = parse_i32(_argv(j + 1))
+        while j < n
+            val a: u8[] = arg_value(j)
+            if equals(a, "-fps") && j + 1 < n
+                fps = parse_i32(arg_value(j + 1))
                 j = j + 2
             else if !starts_with(a, "-")
                 run_arg = a
