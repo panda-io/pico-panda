@@ -18,6 +18,7 @@ import hosted.file::*
 import hosted.args::*
 import hosted.time::*
 import hosted.signal::*
+import hosted.folder::*
 import string::*
 import boot::boot_program
 
@@ -169,10 +170,22 @@ fun _cmd_init()
         println()
         return
     f.write_bytes("# ppd.cfg — Pico Panda project\n")
-    f.write_bytes("src    = main.ppd\n")
+    f.write_bytes("src    = src/\n")
     f.write_bytes("output = main.ppbc\n")
     f.close()
     print_str("created 'ppd.cfg'")
+    println()
+    folder_create("src")
+    var m: File
+    if !m.open("src/main.ppd", WRITE)
+        print_str("error: cannot create 'src/main.ppd'")
+        println()
+        return
+    m.write_bytes("@signal(SIGNAL_SYS_START)\n")
+    m.write_bytes("fun on_start()\n")
+    m.write_bytes("    exit()\n")
+    m.close()
+    print_str("created 'src/main.ppd'")
     println()
 
 // ── Usage ─────────────────────────────────────────────────────────────────────

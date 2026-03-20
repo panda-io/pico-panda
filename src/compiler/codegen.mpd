@@ -218,7 +218,8 @@ class Codegen()
         var i: i32 = 0
         while i < _decls.count()
             if _decls.kind(i) == i32(DeclKind.FUN)
-                _gen_fun(i)
+                if _decls.ann_kind(i) != 4  // skip @asm (inlined at call sites)
+                    _gen_fun(i)
             i++
 
     fun _gen_fun(di: i32)
@@ -642,10 +643,71 @@ class Codegen()
             _put_str("    PUSH -1\n")
             _put_str("    XOR\n")
 
+    // Find the decl index of a FUN declaration by name string index.
+    // Returns -1 if not found.
+    fun _find_fun_decl(name_si: i32) i32
+        val name: u8[] = _scan.str_get(name_si)
+        var i: i32 = 0
+        while i < _decls.count()
+            if _decls.kind(i) == i32(DeclKind.FUN)
+                val fname: u8[] = _scan.str_get(_decls.d0(i))
+                if equals(fname, name)
+                    return i
+            i++
+        return -1
+
+    // Inline an @asm template at the call site, substituting {paramname} with
+    // the integer literal value of the corresponding argument.
+    fun _gen_asm_call(di: i32, args_start: i32, args_count: i32)
+        val template_si: i32 = _decls.ann_name(di)
+        val tmpl: u8[] = _scan.str_get(template_si)
+        val ps: i32 = _decls.d1(di)  // params_start in child list
+        val pc: i32 = _decls.d2(di)  // params_count
+        _put_str("    ")
+        var ti: u32 = u32(0)
+        while ti < tmpl.size()
+            val c: u8 = tmpl[ti]
+            if c == u8(123)  // '{'
+                ti++
+                val pname_start: u32 = ti
+                while ti < tmpl.size() && tmpl[ti] != u8(125)  // '}'
+                    ti++
+                val pname_len: u32 = ti - pname_start
+                val pname: u8[] = {&tmpl[pname_start], pname_len}
+                // find param index by name
+                var pi: i32 = 0
+                var found: bool = false
+                while pi < pc
+                    val psi: i32 = _nodes.child_get(ps + pi * 2)
+                    val param_name: u8[] = _scan.str_get(psi)
+                    if equals(param_name, pname)
+                        if pi < args_count
+                            val arg_h: i32 = _nodes.child_get(args_start + pi)
+                            if _nodes.kind(arg_h) == i32(ExprKind.LIT_INT)
+                                _put_int(_nodes.d0(arg_h))
+                                found = true
+                        break
+                    pi++
+                if !found
+                    _put(u8(123))
+                    _put_str(pname)
+                    _put(u8(125))
+                if ti < tmpl.size()
+                    ti++  // consume '}'
+            else
+                _put(c)
+                ti++
+        _put_str("\n")
+
     fun _gen_call(h: i32)
         val nsi: i32 = _nodes.d0(h)
         val as_: i32 = _nodes.d1(h)
         val ac:  i32 = _nodes.d2(h)
+        // Check if this is an @asm function — inline template instead of CALL
+        val callee_di: i32 = _find_fun_decl(nsi)
+        if callee_di >= 0 && _decls.ann_kind(callee_di) == 4
+            _gen_asm_call(callee_di, as_, ac)
+            return
         var j: i32 = 0
         while j < ac
             _gen_expr(_nodes.child_get(as_ + j))
@@ -716,11 +778,12 @@ class Codegen()
         return 3
 
     fun _gen_signal_main()
-        // Count annotated functions (ann_kind > 0)
+        // Count annotated signal/tick/interval functions (ann_kind 1..3, not @asm=4)
         var ann_count: i32 = 0
         var i: i32 = 0
         while i < _decls.count()
-            if _decls.ann_kind(i) > 0
+            val ak: i32 = _decls.ann_kind(i)
+            if ak >= 1 && ak <= 3
                 ann_count++
             i++
 
@@ -738,9 +801,10 @@ class Codegen()
         // Emit signal globals (.data)
         i = 0
         while i < _decls.count()
-            if _decls.ann_kind(i) > 0
+            val ak0: i32 = _decls.ann_kind(i)
+            if ak0 >= 1 && ak0 <= 3
                 val fn_name: u8[] = _scan.str_get(_decls.d0(i))
-                val k: i32 = _decls.ann_kind(i)
+                val k: i32 = ak0
                 val n: i32 = _decls.ann_n(i)
                 if k == 2
                     // @interval: elapsed fixed global
@@ -774,7 +838,7 @@ class Codegen()
         i = 0
         while i < _decls.count()
             val k: i32 = _decls.ann_kind(i)
-            if k > 0
+            if k >= 1 && k <= 3
                 val fn_name: u8[] = _scan.str_get(_decls.d0(i))
                 var sig_id: i32 = 0
                 if k == 1
@@ -800,7 +864,7 @@ class Codegen()
         i = 0
         while i < _decls.count()
             val k: i32 = _decls.ann_kind(i)
-            if k > 0
+            if k >= 1 && k <= 3
                 val fn_name: u8[] = _scan.str_get(_decls.d0(i))
                 val n: i32 = _decls.ann_n(i)
                 _put_str("fun __wrap_")

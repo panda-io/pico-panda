@@ -1,0 +1,12 @@
+var cooldown: int = 10
+    
+@tick(10)
+fun on_tick()
+    val interval := signal_param_fixed(0)
+    console_print_int(cooldown)
+    console_print_str("\ndelta:")
+    console_print_fixed(interval)
+    console_print_str("\n")
+    cooldown -= 1
+    if cooldown <=0
+        exit()

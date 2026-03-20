@@ -592,10 +592,12 @@ var vm: VM
 
 fun _console_handler(sub: u8, task: &Task)
     match i32(sub)
+        ConsoleCode.PrintBool:
+            console.print_bool(task.pop())
         ConsoleCode.PrintInt:
             console.print_i32(task.pop())
         ConsoleCode.PrintFixed:
-            console.print_i32(task.pop())
+            console.print_fixed(task.pop(), u32(6))
         ConsoleCode.PrintStr:
             val packed: i32 = task.pop()
             val str_addr: i32 = packed & 0xFFFF

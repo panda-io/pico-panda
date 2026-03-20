@@ -190,6 +190,8 @@ class Checker()
             i++
 
     fun _check_fun(di: i32)
+        if _decls.ann_kind(di) == 4
+            return  // @asm functions have no body to check
         _cur_ret  = _resolve_type(_decls.ret(di))
         _in_loop  = 0
         _syms.push_frame()

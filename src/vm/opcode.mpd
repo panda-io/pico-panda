@@ -72,9 +72,10 @@ const MODULE_SIGNAL:   u8 = 0x02
 // ── Console sub-codes (MODULE_CONSOLE) ───────────────────────────────────────
 
 enum ConsoleCode
-    PrintInt     = 0x01
-    PrintFixed   = 0x02
-    PrintStr     = 0x03
+    PrintBool    = 0x01
+    PrintInt     = 0x02
+    PrintFixed   = 0x03
+    PrintStr     = 0x04
 
 // ── Signal module sub-codes (MODULE_SIGNAL) ────────────────────────────────────────────
 

@@ -16,17 +16,21 @@ const SIGNAL_EXIT:      int = 99
 
 // ── Console ───────────────────────────────────────────────────────────────────
 
+fun console_print_bool(v: bool)
+    asm("LOAD_LOCAL v")
+    asm("CALL_MODULE CONSOLE PRINT_BOOL")
+
 fun console_print_int(v: int)
     asm("LOAD_LOCAL v")
     asm("CALL_MODULE CONSOLE PRINT_INT")
 
-fun console_print_str(s: string)
-    asm("LOAD_LOCAL s")
-    asm("CALL_MODULE CONSOLE PRINT_STR")
-
 fun console_print_fixed(v: fixed)
     asm("LOAD_LOCAL v")
     asm("CALL_MODULE CONSOLE PRINT_FIXED")
+
+fun console_print_str(s: string)
+    asm("LOAD_LOCAL s")
+    asm("CALL_MODULE CONSOLE PRINT_STR")
 
 // ── Signal ────────────────────────────────────────────────────────────────────
 
@@ -58,5 +62,17 @@ fun signal_send(id: int, p0: int, p1: int, p2: int, p3: int)
 fun exit()
     signal_send(SIGNAL_EXIT, 0, 0, 0, 0)
     signal_handler_exit()
+
+// Read signal parameters inside a handler (set via signal_send p0–p3).
+// signal_param_int(0) reads p0, signal_param_int(1) reads p1, etc.
+
+@asm("LOAD_REG {slot}")
+fun signal_param_int(slot: int) int
+
+@asm("LOAD_REG {slot}")
+fun signal_param_fixed(slot: int) fixed
+
+@asm("LOAD_REG {slot}")
+fun signal_param_bool(slot: int) bool
 
 '''
