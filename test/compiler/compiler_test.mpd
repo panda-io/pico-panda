@@ -298,4 +298,8 @@ fun test_e2e_add()
     vm_boot_sys()
     console.init(_stdout_write)
     assert(equals(_out(), "7"))
+
+@test
+fun test_checker_type_mismatch()
+    assert(!pp_compile("fun f()\n    val a: int = 1\n    val b: fixed = 1.5\n    val c: int = a + b\n"))
 #end

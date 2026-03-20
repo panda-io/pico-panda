@@ -1,0 +1,11 @@
+@signal(SIGNAL_SYS_START)
+fun on_start()
+    val a: fixed = -1.5
+    val b: fixed = 5
+    console_print_fixed(a)
+    console_print_str("\n")
+    console_print_fixed(b)
+    console_print_str("\n")
+    console_print_fixed(a * b)
+    console_print_str("\n")
+    exit()

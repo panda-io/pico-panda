@@ -297,8 +297,9 @@ class Codegen()
             i++
 
     fun _gen_var_decl(h: i32)
-        val nsi:  i32  = _nodes.d0(h)
-        val init: i32  = _nodes.d2(h)
+        val nsi:      i32  = _nodes.d0(h)
+        val decl_t:   i32  = _nodes.d1(h)
+        val init:     i32  = _nodes.d2(h)
         val name: u8[] = _scan.str_get(nsi)
         _put_str("    .var ")
         _put_str(name)
@@ -306,6 +307,8 @@ class Codegen()
         _cur_locals.set(name, 1)
         if init != -1
             _gen_expr(init)
+            if decl_t == TYPE_FIXED && _chk.expr_type(init) == TYPE_INT
+                _put_str("    INT_TO_FIXED\n")
             _put_str("    STORE_LOCAL ")
             _put_str(name)
             _put_str("\n")

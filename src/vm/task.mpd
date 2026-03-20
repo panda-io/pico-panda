@@ -1,8 +1,7 @@
 import vm.vm_error::VmError
 import vm.config::VM_MAX_FRAMES
-
-const STACK_SIZE: i32 = 256
-const REGISTER_SIZE: i32 = 4
+import vm.config::STACK_SIZE
+import vm.config::REGISTER_SIZE
 
 // ── Task state ────────────────────────────────────────────────────────────────
 

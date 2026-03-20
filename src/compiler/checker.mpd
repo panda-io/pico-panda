@@ -292,6 +292,10 @@ class Checker()
             val init_t: i32 = _check_expr(init)
             if type_id == TYPE_NONE
                 type_id = init_t
+            else if init_t != TYPE_NONE && type_id != init_t
+                val coerce: bool = type_id == TYPE_FIXED && init_t == TYPE_INT
+                if !coerce
+                    _error("type mismatch")
         var kind: i32 = i32(SymbolKind.VAR)
         if is_val != 0
             kind = i32(SymbolKind.VAL)
@@ -438,6 +442,8 @@ class Checker()
         val op: i32    = _nodes.d0(h)
         val lt: i32    = _check_expr(_nodes.d1(h))
         val rt: i32    = _check_expr(_nodes.d2(h))
+        if lt != TYPE_NONE && rt != TYPE_NONE && lt != rt
+            _error("type mismatch")
         val is_cmp: bool = op == i32(TokenKind.EQEQ) || op == i32(TokenKind.NEQ) || op == i32(TokenKind.LT) || op == i32(TokenKind.LE) || op == i32(TokenKind.GT) || op == i32(TokenKind.GE)
         val is_logic: bool = op == i32(TokenKind.AND_AND) || op == i32(TokenKind.OR_OR)
         if is_logic

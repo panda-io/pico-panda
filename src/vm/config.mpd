@@ -9,6 +9,10 @@ const MAX_MEMORY: i32 = 65536
 const VM_MAX_FRAMES:    i32 = 8
 const VM_MAX_SIGNALS:   i32 = 32
 
+// Task runtime limits
+const STACK_SIZE: i32 = 256
+const REGISTER_SIZE: i32 = 4
+
 // System VM runtime limits (lightweight: boot, I/O, scheduler)
 const SYS_MEMORY_SIZE:  i32 = 1024
 const SYS_MAX_TASKS:    i32 = 2

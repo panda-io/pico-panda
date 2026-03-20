@@ -58,11 +58,6 @@ fun signal_send(id: int, p0: int, p1: int, p2: int, p3: int)
     asm("LOAD_LOCAL id")
     asm("CALL_MODULE SIGNAL SEND_SIGNAL")
 
-// Exit the program: queue SIGNAL_EXIT then finish this handler.
-fun exit()
-    signal_send(SIGNAL_EXIT, 0, 0, 0, 0)
-    signal_handler_exit()
-
 // Read signal parameters inside a handler (set via signal_send p0–p3).
 // signal_param_int(0) reads p0, signal_param_int(1) reads p1, etc.
 
@@ -74,5 +69,10 @@ fun signal_param_fixed(slot: int) fixed
 
 @asm("LOAD_REG {slot}")
 fun signal_param_bool(slot: int) bool
+
+// Exit the program: queue SIGNAL_EXIT then finish this handler.
+fun exit()
+    signal_send(SIGNAL_EXIT, 0, 0, 0, 0)
+    signal_handler_exit()
 
 '''
