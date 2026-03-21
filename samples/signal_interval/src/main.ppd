@@ -1,12 +1,9 @@
 var cooldown: int = 10
-    
+
 @tick(10)
 fun on_tick()
-    var interval := signal_param_fixed(0)
     print_int(cooldown)
-    print_str("\ndelta:")
-    print_fixed(interval)
     print_str("\n")
     cooldown -= 1
-    if cooldown <=0
+    if cooldown <= 0
         exit()

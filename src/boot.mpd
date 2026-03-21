@@ -1,11 +1,8 @@
 val boot_program := """
 
 // ── boot.ppd ──────────────────────────────────────────────────────────────────
-// Built-in module bindings for Pico-Panda programs.
-// Compiled and prepended before user code.
-//
-// Uses asm() to bridge pico-panda functions to VM CALL_MODULE instructions.
-// Args are already in locals (assembler resolves .local names to slots).
+// Built-in bindings for Pico-Panda programs.
+// Prepended automatically before user code by the ppd tool.
 
 // ── Signal constants ──────────────────────────────────────────────────────────
 
@@ -32,36 +29,15 @@ fun print_str(s: string)
     asm("LOAD_LOCAL s")
     asm("CALL_MODULE CONSOLE PRINT_STR")
 
-// ── Signal ────────────────────────────────────────────────────────────────────
+// ── Signal control ────────────────────────────────────────────────────────────
 
-// Send a signal with up to 4 register params.
-// Params are stored via STORE_REG before SEND_SIGNAL copies task.regs to signal.regs.
-fun signal_send(id: int, p0: int, p1: int, p2: int, p3: int)
-    asm("LOAD_LOCAL p0")
-    asm("STORE_REG 0")
-    asm("LOAD_LOCAL p1")
-    asm("STORE_REG 1")
-    asm("LOAD_LOCAL p2")
-    asm("STORE_REG 2")
-    asm("LOAD_LOCAL p3")
-    asm("STORE_REG 3")
+// Queue a signal to be dispatched on the next tick.
+fun send(id: int)
     asm("LOAD_LOCAL id")
     asm("CALL_MODULE SIGNAL SEND_SIGNAL")
 
-// Read signal parameters inside a handler (set via signal_send p0–p3).
-// signal_param_int(0) reads p0, signal_param_int(1) reads p1, etc.
-
-@asm("LOAD_REG {slot}")
-fun signal_param_int(slot: int) int
-
-@asm("LOAD_REG {slot}")
-fun signal_param_fixed(slot: int) fixed
-
-@asm("LOAD_REG {slot}")
-fun signal_param_bool(slot: int) bool
-
-// Exit the program: queue SIGNAL_EXIT then finish this handler.
+// Queue SIGNAL_EXIT and finish this handler.
 fun exit()
-    signal_send(SIGNAL_EXIT, 0, 0, 0, 0)
+    send(SIGNAL_EXIT)
 
 """
