@@ -1,0 +1,129 @@
+// ── 2_expressions: All supported expression forms ────────────────────────────
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+fun show_int(label: string, v: int)
+    print_str(label) print_str(": ") print_int(v) print_str("\n")
+
+fun show_fixed(label: string, v: fixed)
+    print_str(label) print_str(": ") print_fixed(v) print_str("\n")
+
+fun show_bool(label: string, v: bool)
+    print_str(label) print_str(": ") print_bool(v) print_str("\n")
+
+fun add(a: int, b: int) int
+    return a + b
+
+// ── Data / array globals ──────────────────────────────────────────────────────
+
+data Point
+    x: int
+    y: int
+
+var g_pt: Point
+var g_arr: int[4]
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+@signal(SIGNAL_SYS_START)
+fun on_start()
+
+    // ── Integer arithmetic ────────────────────────────────────────────────────
+    print_str("── int arithmetic ──\n")
+    show_int("3 + 4  ", 3 + 4)      //  7
+    show_int("10 - 3 ", 10 - 3)     //  7
+    show_int("3 * 4  ", 3 * 4)      // 12
+    show_int("13 / 4 ", 13 / 4)     //  3 (truncating)
+    show_int("13 % 4 ", 13 % 4)     //  1
+    show_int("-7     ", -7)          // -7 (unary minus)
+
+    print_str("\n")
+
+    // ── Fixed-point arithmetic ────────────────────────────────────────────────
+    print_str("── fixed arithmetic ──\n")
+    show_fixed("1.5 + 2.25", 1.5 + 2.25)   // 3.750000
+    show_fixed("5.0 - 1.75", 5.0 - 1.75)   // 3.250000
+    show_fixed("2.0 * 1.5 ", 2.0 * 1.5)    // 3.000000
+    show_fixed("7.0 / 2.0 ", 7.0 / 2.0)    // 3.500000
+    show_fixed("-1.5      ", -1.5)           // -1.500000
+
+    print_str("\n")
+
+    // ── Bitwise (int only) ────────────────────────────────────────────────────
+    print_str("── bitwise ──\n")
+    show_int("10 &  12", 10 & 12)    //  8
+    show_int("10 |  12", 10 | 12)    // 14
+    show_int("10 ^  12", 10 ^ 12)    //  6
+    show_int("~0      ", ~0)          // -1
+    show_int("1  << 3 ", 1 << 3)     //  8
+    show_int("64 >> 2 ", 64 >> 2)    // 16
+
+    print_str("\n")
+
+    // ── Comparison ────────────────────────────────────────────────────────────
+    print_str("── comparison ──\n")
+    show_bool("3 == 3   ", 3 == 3)     // true
+    show_bool("3 != 4   ", 3 != 4)     // true
+    show_bool("2 <  5   ", 2 < 5)      // true
+    show_bool("5 >  2   ", 5 > 2)      // true
+    show_bool("3 <= 3   ", 3 <= 3)     // true
+    show_bool("4 >= 5   ", 4 >= 5)     // false
+    show_bool("1.5 < 2.0", 1.5 < 2.0) // true (fixed comparison)
+
+    print_str("\n")
+
+    // ── Logical ───────────────────────────────────────────────────────────────
+    print_str("── logical ──\n")
+    show_bool("true && false", true && false)  // false
+    show_bool("true || false", true || false)  // true
+    show_bool("!true        ", !true)           // false
+
+    print_str("\n")
+
+    // ── Compound assignment ───────────────────────────────────────────────────
+    print_str("── compound assignment ──\n")
+    var n: int = 10
+    n += 5   show_int("10 += 5", n)  // 15
+    n -= 3   show_int("15 -= 3", n)  // 12
+    n *= 2   show_int("12 *= 2", n)  // 24
+    n /= 4   show_int("24 /= 4", n)  //  6
+    n %= 4   show_int("6  %= 4", n)  //  2
+    n += 1   show_int("2  += 1", n)  //  3
+    n -= 1   show_int("3  -= 1", n)  //  2
+
+    print_str("\n")
+
+    // ── Type casts ────────────────────────────────────────────────────────────
+    print_str("── casts ──\n")
+    show_int  ("int(3.75) ", int(3.75))   //  3 (truncates)
+    show_fixed("fixed(5)  ", fixed(5))    //  5.000000
+
+    print_str("\n")
+
+    // ── Field access ──────────────────────────────────────────────────────────
+    print_str("── field access ──\n")
+    g_pt.x = 10
+    g_pt.y = 20
+    show_int("pt.x      ", g_pt.x)            // 10
+    show_int("pt.y      ", g_pt.y)            // 20
+    show_int("pt.x+pt.y ", g_pt.x + g_pt.y)  // 30
+
+    print_str("\n")
+
+    // ── Array index / size ────────────────────────────────────────────────────
+    print_str("── array / size ──\n")
+    g_arr[0] = 10
+    g_arr[1] = 20
+    g_arr[2] = 30
+    g_arr[3] = 40
+    show_int("arr[0]    ", g_arr[0])         // 10
+    show_int("arr[2]    ", g_arr[2])         // 30
+    show_int("arr.size()", g_arr.size())     //  4
+
+    print_str("\n")
+
+    // ── Function call as expression ───────────────────────────────────────────
+    print_str("── call expression ──\n")
+    show_int("add(7,8)  ", add(7, 8))   // 15
+
+    exit()

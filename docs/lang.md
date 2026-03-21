@@ -343,21 +343,29 @@ Each arm is a single expression or an indented block.
 
 ```pico-panda
 match dir
-    Direction.UP    → move_up()
-    Direction.DOWN  → move_down()
-    Direction.LEFT  → move_left()
-    Direction.RIGHT → move_right()
+    Direction.UP:
+        move_up()
+    Direction.DOWN:
+        move_down()
+    Direction.LEFT:
+        move_left()
+    Direction.RIGHT:
+        move_right()
 
 match lives
-    0 → game_over()
-    _ → continue_game()
+    0:
+        game_over()
+    _:
+        continue_game()
 
 match state
-    State.IDLE →
+    State.IDLE:
         score = 0
         lives = 3
-    State.RUNNING → update()
-    _ → {}
+    State.RUNNING:
+        update()
+    _:
+        print_str("unknown state")
 ```
 
 Only one arm fires. Arms are checked top-to-bottom; the first match wins.
