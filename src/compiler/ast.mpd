@@ -139,6 +139,10 @@ class NodePool()
         return _d3.get(u32(h))
 
     @inline
+    fun set_d0(h: i32, v: i32)
+        _d0.set(u32(h), v)
+
+    @inline
     fun set_d1(h: i32, v: i32)
         _d1.set(u32(h), v)
 

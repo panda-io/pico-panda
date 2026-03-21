@@ -1,7 +1,18 @@
-const gpio_HIGH: int = 1
-const gpio_LOW: int = 0
+const HIGH: int = 1
+const LOW: int = 0
 
-fun gpio_digital_write(pin: int, value: int)
+enum Mode
+    INPUT
+    OUTPUT
+
+fun pin_mode(pin: int, mode: Mode)
+    print_str("pin: ")
+    print_int(pin)
+    print_str(" mode: ")
+    print_int(mode)
+    print_str(" \n")
+
+fun digital_write(pin: int, value: int)
     print_str("digital write pin ")
     print_int(pin)
     print_str(" value ")

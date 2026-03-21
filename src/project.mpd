@@ -12,16 +12,48 @@ import string::*
 
 const _MAX_SRC:  i32 = 64
 const _MAX_PATH: i32 = 256
+const _MAX_MOD:  i32 = 64    // max module name length
 const _CFG_LINE: i32 = 512
 
 class PpdConfig()
     var _src:       u8[_MAX_SRC * _MAX_PATH]
     var _src_lens:  u32[_MAX_SRC]
     var _src_count: i32 = 0
+    var _lib:       u8[_MAX_SRC * _MAX_PATH]
+    var _lib_lens:  u32[_MAX_SRC]
+    var _lib_names: u8[_MAX_SRC * _MAX_MOD]
+    var _lib_nlen:  u32[_MAX_SRC]
+    var _lib_count: i32 = 0
     var _output:    u8[_MAX_PATH]
     var _out_len:   u32 = 0
     var _line:      u8[_CFG_LINE]
     var _ok:        bool = false
+
+    // Extract module name from a file path: "lib/gpio.ppd" → "gpio".
+    // Writes into out[], returns number of bytes written.
+    fun _extract_name(path: u8[], out: u8[]) u32
+        // find start: byte after last '/'
+        var start: u32 = u32(0)
+        var i: u32 = u32(0)
+        while i < path.size()
+            if path[i] == u8(47)   // '/'
+                start = i + u32(1)
+            i++
+        // find end: last '.' (strip extension)
+        var end: u32 = path.size()
+        i = path.size()
+        while i > start
+            i--
+            if path[i] == u8(46)   // '.'
+                end = i
+                break
+        // copy start..end
+        val len: u32 = end - start
+        var k: u32 = u32(0)
+        while k < len && k < out.size()
+            out[k] = path[start + k]
+            k++
+        return k
 
     // Scan a folder for *.ppd files and add each as a source entry.
     // Path must end with '/'.
@@ -51,6 +83,32 @@ class PpdConfig()
             n = dir.next({&name_buf[0], u32(256)})
         dir.close()
 
+    // Scan a folder for *.ppd lib files (module name = filename without extension).
+    fun _scan_lib_folder(folder: u8[])
+        var dir: Folder
+        if !dir.open(folder)
+            return
+        var name_buf: u8[256]
+        var n: u32 = dir.next({&name_buf[0], u32(256)})
+        while n > u32(0)
+            val name: u8[] = {&name_buf[0], n}
+            if ends_with(name, ".ppd")
+                var path_buf: u8[_MAX_PATH]
+                var pi: u32 = 0
+                var fi: u32 = 0
+                while fi < folder.size() && pi < u32(_MAX_PATH) - u32(1)
+                    path_buf[pi] = folder[fi]
+                    fi++
+                    pi++
+                var ni: u32 = 0
+                while ni < n && pi < u32(_MAX_PATH) - u32(1)
+                    path_buf[pi] = name[ni]
+                    ni++
+                    pi++
+                _add_lib({&path_buf[0], pi})
+            n = dir.next({&name_buf[0], u32(256)})
+        dir.close()
+
     fun _add_src(s: u8[])
         if _src_count >= _MAX_SRC
             return
@@ -64,6 +122,23 @@ class PpdConfig()
             j++
         _src_lens[u32(_src_count)] = n
         _src_count++
+
+    fun _add_lib(s: u8[])
+        if _lib_count >= _MAX_SRC
+            return
+        val base: u32 = u32(_lib_count) * u32(_MAX_PATH)
+        var n: u32 = s.size()
+        if n >= u32(_MAX_PATH)
+            n = u32(_MAX_PATH) - u32(1)
+        var j: u32 = u32(0)
+        while j < n
+            _lib[base + j] = s[j]
+            j++
+        _lib_lens[u32(_lib_count)] = n
+        val nm_base: u32 = u32(_lib_count) * u32(_MAX_MOD)
+        val nm_len: u32 = _extract_name(s, {&_lib_names[nm_base], u32(_MAX_MOD)})
+        _lib_nlen[u32(_lib_count)] = nm_len
+        _lib_count++
 
     fun _set_output(s: u8[])
         var n: u32 = s.size()
@@ -107,11 +182,16 @@ class PpdConfig()
             val value: u8[] = trim(sub(line, vstart, line.size() - vstart))
             if value.size() == u32(0)
                 continue
-            if equals(key, "src") || equals(key, "lib")
+            if equals(key, "src")
                 if ends_with(value, "/")
                     _scan_folder(value)
                 else
                     _add_src(value)
+            else if equals(key, "lib")
+                if ends_with(value, "/")
+                    _scan_lib_folder(value)
+                else
+                    _add_lib(value)
             else if equals(key, "output")
                 _set_output(value)
 
@@ -128,6 +208,17 @@ class PpdConfig()
     fun src(i: i32) u8[]
         val base: u32 = u32(i) * u32(_MAX_PATH)
         return {&_src[base], _src_lens[u32(i)]}
+
+    fun lib_count() i32
+        return _lib_count
+
+    fun lib_path(i: i32) u8[]
+        val base: u32 = u32(i) * u32(_MAX_PATH)
+        return {&_lib[base], _lib_lens[u32(i)]}
+
+    fun lib_name(i: i32) u8[]
+        val base: u32 = u32(i) * u32(_MAX_MOD)
+        return {&_lib_names[base], _lib_nlen[u32(i)]}
 
     fun output() u8[]
         return {&_output[0], _out_len}

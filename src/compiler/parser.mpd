@@ -22,6 +22,7 @@
 #if HOSTED
 import hosted.memory::HeapAllocator
 import hosted.collection::HeapList
+import hosted.collection::HeapMap
 import compiler.scanner::Scanner
 import compiler.ast::*
 import compiler.token::TokenKind
@@ -47,6 +48,7 @@ class DeclList()
     var _ann_kind:     HeapList<i32>
     var _ann_priority: HeapList<i32>
     var _lines:        HeapList<i32>   // source line of declaration name
+    var _mod_si:       HeapList<i32>   // module string index (-1 = no module / src file)
 
     fun init(heap: &HeapAllocator)
         _heap = heap
@@ -61,6 +63,7 @@ class DeclList()
         _ann_kind.init(heap)
         _ann_priority.init(heap)
         _lines.init(heap)
+        _mod_si.init(heap)
 
     fun add(kind: i32, d0: i32, d1: i32, d2: i32, d3: i32, ret: i32, line: i32) i32
         val i: i32 = i32(_kinds.size())
@@ -75,6 +78,7 @@ class DeclList()
         _ann_kind.push(0)
         _ann_priority.push(0)
         _lines.push(line)
+        _mod_si.push(-1)
         return i
 
     fun set_annotation(i: i32, name_si: i32, n: i32, kind: i32, priority: i32)
@@ -119,6 +123,12 @@ class DeclList()
     fun line(i: i32) i32
         return _lines.get(u32(i))
 
+    fun mod_si(i: i32) i32
+        return _mod_si.get(u32(i))
+
+    fun set_mod_si(i: i32, v: i32)
+        _mod_si.set(u32(i), v)
+
 // ── Parser ────────────────────────────────────────────────────────────────────
 
 // Default error location printer: "line N: "
@@ -128,18 +138,24 @@ fun _default_error_loc(line: i32)
     print_str(": ")
 
 class Parser()
-    var _scan:          &Scanner
-    var _nodes:         NodePool
-    var _decls:         DeclList
+    var _heap:           &HeapAllocator
+    var _scan:           &Scanner
+    var _nodes:          NodePool
+    var _decls:          DeclList
+    var _modules:        HeapMap<i32>  // module name → 1 (known module set)
+    var _cur_mod_si:     i32 = -1      // current module string index (-1 = no module)
     var _cur:            i32 = 0   // current token index
     var _errors:         i32 = 0
     var _last_array_dim: i32 = 0   // dim N from last T[N] parse (0 = unknown)
     var _error_loc:      fun(i32)  // called with global line number before each error
 
     fun init(heap: &HeapAllocator, scan: &Scanner)
+        _heap   = heap
         _scan   = scan
         _nodes.init(heap)
         _decls.init(heap)
+        _modules.init(heap)
+        _cur_mod_si = -1
         _cur    = 0
         _errors = 0
         _error_loc = _default_error_loc
@@ -174,11 +190,17 @@ class Parser()
     fun _kind_at(i: i32) i32
         return _scan.tok_kind(_cur + i)
 
+    fun _val_at(i: i32) i32
+        return _scan.tok_val(_cur + i)
+
     fun _val() i32
         return _scan.tok_val(_cur)
 
     fun _line() i32
         return _scan.tok_line(_cur)
+
+    fun modules() &HeapMap<i32>
+        return &_modules
 
     fun _advance()
         val n: i32 = _scan.token_count()
@@ -264,17 +286,24 @@ class Parser()
             _advance()
             return TYPE_STRING
         if _kind() == i32(TokenKind.IDENT)
-            // Named type (data / enum) — look up later; return name-encoded id
-            // We reserve 100..999 for named-type placeholders;
-            // the checker will resolve them to actual TypeTable IDs.
-            // For now emit an IDENT node handle wrapped in a special range.
-            // Simple approach: return -2 as "named type, resolved later"
-            // and store the name string index. Since we can't return two values,
-            // we use a convention: return (400 + str_idx) when str_idx < 500.
-            // The checker unwraps this during a second pass.
+            // Named type (data / enum) — look up later; return name-encoded id.
+            // The checker resolves 4000+si placeholders to actual TypeTable IDs.
             val si: i32 = _val()
+            val name: u8[] = _scan.str_get(si)
             _advance()
-            return 4000 + si   // named type placeholder (resolved by checker)
+            // module.Type qualified syntax (e.g. gpio.Level from a src file)
+            if _kind() == i32(TokenKind.DOT) && _modules.contains(name)
+                _advance()
+                if _kind() != i32(TokenKind.IDENT)
+                    _error("expected type name after module name")
+                    return TYPE_NONE
+                val type_si: i32 = _val()
+                _advance()
+                val mangled_si: i32 = _mangle(si, type_si)
+                return 4000 + mangled_si
+            // Inside a module context, auto-prefix the type name
+            val effective_si: i32 = _make_prefixed(si)
+            return 4000 + effective_si
         return TYPE_NONE
 
     // ── Top-level declarations ────────────────────────────────────────────
@@ -283,6 +312,9 @@ class Parser()
         _skip_newlines()
         val k: i32 = _kind()
         if k == i32(TokenKind.AT)
+            // @module directive?
+            if _kind_at(1) == i32(TokenKind.IDENT) && equals(_scan.str_get(_val_at(1)), "module")
+                return _parse_module_decl()
             return _parse_annotated_fun()
         if k == i32(TokenKind.KW_FUN)
             return _parse_fun_decl(-1, -1, 0, 0)
@@ -375,13 +407,32 @@ class Parser()
             return false
         return _parse_fun_decl(sig_ident_si, sig_n, ann_kind, sig_priority)
 
+    // Handle "@module name" (set module prefix) or "@module" (reset).
+    fun _parse_module_decl() bool
+        _advance()  // '@'
+        _advance()  // 'module'
+        if _kind() == i32(TokenKind.NEWLINE) || _kind() == i32(TokenKind.EOF)
+            _cur_mod_si = -1   // reset: back to top-level (src file) context
+            _consume_newline()
+            return true
+        if _kind() != i32(TokenKind.IDENT)
+            _error("expected module name after @module")
+            return false
+        val name_si: i32 = _val()
+        val name: u8[] = _scan.str_get(name_si)
+        _advance()
+        _modules.set(name, 1)
+        _cur_mod_si = name_si
+        _consume_newline()
+        return true
+
     fun _parse_fun_decl(ann_name_si: i32, ann_n: i32, ann_kind: i32, ann_priority: i32) bool
         _advance()  // 'fun'
         if _kind() != i32(TokenKind.IDENT)
             _error("expected function name")
             return false
         val name_line: i32 = _line()
-        val name_si: i32 = _val()
+        val name_si: i32 = _make_prefixed(_val())
         _advance()
         if !_expect(i32(TokenKind.LPAREN))
             return false
@@ -421,6 +472,8 @@ class Parser()
         val di: i32 = _decls.add(i32(DeclKind.FUN), name_si, params_start, params_count, body, ret_type, name_line)
         if ann_kind > 0
             _decls.set_annotation(di, ann_name_si, ann_n, ann_kind, ann_priority)
+        if _cur_mod_si != -1
+            _decls.set_mod_si(di, _cur_mod_si)
         return true
 
     fun _parse_data_decl() bool
@@ -429,7 +482,7 @@ class Parser()
             _error("expected data type name")
             return false
         val name_line: i32 = _line()
-        val name_si: i32 = _val()
+        val name_si: i32 = _make_prefixed(_val())
         _advance()
         _consume_newline()
         if !_expect(i32(TokenKind.INDENT))
@@ -453,7 +506,9 @@ class Parser()
             fields_count++
             _consume_newline()
         _expect(i32(TokenKind.DEDENT))
-        _decls.add(i32(DeclKind.DATA), name_si, fields_start, fields_count, 0, 0, name_line)
+        val ddi: i32 = _decls.add(i32(DeclKind.DATA), name_si, fields_start, fields_count, 0, 0, name_line)
+        if _cur_mod_si != -1
+            _decls.set_mod_si(ddi, _cur_mod_si)
         return true
 
     fun _parse_enum_decl() bool
@@ -462,7 +517,7 @@ class Parser()
             _error("expected enum name")
             return false
         val name_line: i32 = _line()
-        val name_si: i32 = _val()
+        val name_si: i32 = _make_prefixed(_val())
         _advance()
         _consume_newline()
         if !_expect(i32(TokenKind.INDENT))
@@ -494,7 +549,9 @@ class Parser()
             variants_count++
             _consume_newline()
         _expect(i32(TokenKind.DEDENT))
-        _decls.add(i32(DeclKind.ENUM_DECL), name_si, variants_start, variants_count, 0, 0, name_line)
+        val edi: i32 = _decls.add(i32(DeclKind.ENUM_DECL), name_si, variants_start, variants_count, 0, 0, name_line)
+        if _cur_mod_si != -1
+            _decls.set_mod_si(edi, _cur_mod_si)
         return true
 
     fun _parse_global_var() bool
@@ -503,7 +560,7 @@ class Parser()
             _error("expected variable name")
             return false
         val var_line: i32 = _line()
-        val name_si: i32 = _val()
+        val name_si: i32 = _make_prefixed(_val())
         _advance()
         var type_id: i32 = TYPE_NONE
         var init_e: i32 = -1
@@ -517,7 +574,9 @@ class Parser()
             _advance()
             init_e = _parse_expr()
         _consume_newline()
-        _decls.add(i32(DeclKind.GLOBAL_VAR), name_si, type_id, init_e, 0, _last_array_dim, var_line)
+        val vdi: i32 = _decls.add(i32(DeclKind.GLOBAL_VAR), name_si, type_id, init_e, 0, _last_array_dim, var_line)
+        if _cur_mod_si != -1
+            _decls.set_mod_si(vdi, _cur_mod_si)
         return true
 
     fun _parse_global_const() bool
@@ -526,7 +585,7 @@ class Parser()
             _error("expected constant name")
             return false
         val const_line: i32 = _line()
-        val name_si: i32 = _val()
+        val name_si: i32 = _make_prefixed(_val())
         _advance()
         var type_id: i32 = TYPE_NONE
         if _kind() == i32(TokenKind.COLON)
@@ -538,7 +597,9 @@ class Parser()
         _advance()
         val init_e: i32 = _parse_expr()
         _consume_newline()
-        _decls.add(i32(DeclKind.GLOBAL_VAR), name_si, type_id, init_e, 1, 0, const_line)
+        val cdi: i32 = _decls.add(i32(DeclKind.GLOBAL_VAR), name_si, type_id, init_e, 1, 0, const_line)
+        if _cur_mod_si != -1
+            _decls.set_mod_si(cdi, _cur_mod_si)
         return true
 
     // ── Block ─────────────────────────────────────────────────────────────
@@ -959,13 +1020,14 @@ class Parser()
         return _parse_postfix()
 
     // Build "mod_field" from two string indices and intern it.
-    fun _mangle_call(mod_si: i32, field_si: i32) i32
+    // Mangle two string indices: "mod" + "_" + "name" → intern and return new si.
+    fun _mangle(mod_si: i32, field_si: i32) i32
         val mod_name: u8[]   = _scan.str_get(mod_si)
         val field_name: u8[] = _scan.str_get(field_si)
         var buf: u8[128]
         var blen: i32 = 0
         var mi: i32 = 0
-        while mi < i32(mod_name.size()) && blen < 127
+        while mi < i32(mod_name.size()) && blen < 126
             buf[u32(blen)] = mod_name[u32(mi)]
             blen++
             mi++
@@ -978,6 +1040,13 @@ class Parser()
             fi++
         return _scan.str_intern_bytes({&buf[0], u32(blen)}, blen)
 
+    // When inside a module context, return "modname_si" for the given name si.
+    // Otherwise returns si unchanged.
+    fun _make_prefixed(si: i32) i32
+        if _cur_mod_si == -1
+            return si
+        return _mangle(_cur_mod_si, si)
+
     fun _parse_postfix() i32
         var base: i32 = _parse_primary()
         while true
@@ -987,14 +1056,13 @@ class Parser()
                     val field_si: i32 = _val()
                     val fl: i32 = _line()
                     _advance()
-                    // Special: expr.size() → SLICE_LEN node
                     if equals(_scan.str_get(field_si), "size") && _kind() == i32(TokenKind.LPAREN)
                         _advance()  // (
                         _expect(i32(TokenKind.RPAREN))
                         _nodes.set_line(fl)
                         base = _nodes.expr_slice_len(base)
-                    else if _kind() == i32(TokenKind.LPAREN) && _nodes.kind(base) == i32(ExprKind.IDENT)
-                        val mangled_si: i32 = _mangle_call(_nodes.d0(base), field_si)
+                    else if _nodes.kind(base) == i32(ExprKind.IDENT) && _modules.contains(_scan.str_get(_nodes.d0(base)))
+                        val mangled_si: i32 = _mangle(_nodes.d0(base), field_si)
                         _nodes.set_line(fl)
                         base = _nodes.expr_ident(mangled_si)
                     else

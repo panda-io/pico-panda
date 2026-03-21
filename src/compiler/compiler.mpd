@@ -64,6 +64,7 @@ class Compiler()
         _checker.init(&_heap, &_scanner, _parser.nodes(), _parser.decls())
         if _has_err_loc
             _checker.set_error_loc(_err_loc)
+        _checker.set_modules(_parser.modules())
         if !_checker.check()
             _errors = _errors + _checker.error_count()
             return false

@@ -13,6 +13,7 @@
 #if HOSTED
 import hosted.memory::HeapAllocator
 import hosted.collection::HeapList
+import hosted.collection::HeapMap
 import compiler.scanner::Scanner
 import compiler.ast::*
 import compiler.token::TokenKind
@@ -33,12 +34,15 @@ class Checker()
     // Inferred type per expression node handle (indexed by handle int).
     var _expr_types: HeapList<i32>
 
-    var _errors:      i32 = 0
-    var _cur_ret:     i32 = TYPE_NONE  // return type of current function
-    var _in_loop:     i32 = 0          // loop nesting depth (for break/continue)
-    var _cur_line:    i32 = 0          // source line of node being checked
-    var _error_loc:   fun(i32)
-    var _has_err_loc: bool = false
+    var _errors:          i32 = 0
+    var _cur_ret:         i32 = TYPE_NONE  // return type of current function
+    var _in_loop:         i32 = 0          // loop nesting depth (for break/continue)
+    var _cur_line:        i32 = 0          // source line of node being checked
+    var _error_loc:       fun(i32)
+    var _has_err_loc:     bool = false
+    var _mod_names:       &HeapMap<i32>    // module name → 1 (set by compiler after parse)
+    var _has_mod_names:   bool = false
+    var _cur_fun_mod_si:  i32 = -1         // mod string-idx of current fun (-1 = src/top-level)
 
     fun init(heap: &HeapAllocator, scan: &Scanner, nodes: &NodePool, decls: &DeclList)
         _heap  = heap
@@ -52,6 +56,35 @@ class Checker()
     fun set_error_loc(fn: fun(i32))
         _error_loc = fn
         _has_err_loc = true
+
+    fun set_modules(m: &HeapMap<i32>)
+        _mod_names = m
+        _has_mod_names = true
+
+    fun _is_module(name: u8[]) bool
+        if !_has_mod_names
+            return false
+        return _mod_names.contains(name)
+
+    // Build "mod_field" interned string from two string indices.
+    fun _mangle_si(mod_si: i32, field_si: i32) i32
+        val mod_name:   u8[] = _scan.str_get(mod_si)
+        val field_name: u8[] = _scan.str_get(field_si)
+        var buf: u8[128]
+        var blen: i32 = 0
+        var mi: i32 = 0
+        while mi < i32(mod_name.size()) && blen < 126
+            buf[u32(blen)] = mod_name[u32(mi)]
+            blen++
+            mi++
+        buf[u32(blen)] = u8(95)   // '_'
+        blen++
+        var fi: i32 = 0
+        while fi < i32(field_name.size()) && blen < 127
+            buf[u32(blen)] = field_name[u32(fi)]
+            blen++
+            fi++
+        return _scan.str_intern_bytes({&buf[0], u32(blen)}, blen)
 
     fun check() bool
         _errors = 0
@@ -210,6 +243,10 @@ class Checker()
             else if k == i32(DeclKind.GLOBAL_VAR)
                 val name_si: i32 = _decls.d0(i)
                 val name: u8[] = _scan.str_get(name_si)
+                if _is_module(name)
+                    _error("module name cannot be used as a variable")
+                    i++
+                    continue
                 if _syms.lookup_global(name) >= 0
                     _error("duplicate global variable")
                     i++
@@ -252,6 +289,7 @@ class Checker()
         _cur_line = _decls.line(di)
         _cur_ret  = _resolve_type(_decls.ret(di))
         _in_loop  = 0
+        _cur_fun_mod_si = _decls.mod_si(di)
         _syms.push_frame()
         val params_start: i32 = _decls.d1(di)
         val params_count: i32 = _decls.d2(di)
@@ -270,6 +308,7 @@ class Checker()
         val body: i32 = _decls.d3(di)
         _check_stmt(body)
         _syms.pop_frame()
+        _cur_fun_mod_si = -1
 
     // ── Statement checking ────────────────────────────────────────────────
 
@@ -318,6 +357,9 @@ class Checker()
 
     fun _check_var_decl(h: i32)
         val name_si: i32 = _nodes.d0(h)
+        if _is_module(_scan.str_get(name_si))
+            _error("module name cannot be used as a variable")
+            return
         val type_raw: i32 = _nodes.d1(h)
         val init: i32     = _nodes.d2(h)
         var type_id: i32  = _resolve_type(type_raw)
@@ -347,6 +389,9 @@ class Checker()
 
     fun _check_const_decl(h: i32)
         val name_si: i32 = _nodes.d0(h)
+        if _is_module(_scan.str_get(name_si))
+            _error("module name cannot be used as a constant")
+            return
         val type_raw: i32 = _nodes.d1(h)
         val init: i32     = _nodes.d2(h)
         var type_id: i32  = _resolve_type(type_raw)
@@ -492,6 +537,15 @@ class Checker()
         val gi: i32 = _syms.lookup_global(name)
         if gi >= 0
             return _syms.global_type(gi)
+        // Inside a lib function, try the module-prefixed name
+        if _cur_fun_mod_si != -1
+            val mangled_si: i32 = _mangle_si(_cur_fun_mod_si, si)
+            val mangled: u8[] = _scan.str_get(mangled_si)
+            val mgi: i32 = _syms.lookup_global(mangled)
+            if mgi >= 0
+                // Patch the IDENT node to use the mangled name so codegen works
+                _nodes.set_d0(h, mangled_si)
+                return _syms.global_type(mgi)
         _error("undefined identifier")
         return TYPE_NONE
 
@@ -526,7 +580,15 @@ class Checker()
             _check_expr(_nodes.child_get(args_start + j))
             j++
         val name: u8[] = _scan.str_get(name_si)
-        val gi: i32 = _syms.lookup_global(name)
+        var gi: i32 = _syms.lookup_global(name)
+        // Inside a lib function, try module-prefixed name if not found
+        if gi < 0 && _cur_fun_mod_si != -1
+            val mangled_si: i32 = _mangle_si(_cur_fun_mod_si, name_si)
+            val mangled: u8[] = _scan.str_get(mangled_si)
+            val mgi: i32 = _syms.lookup_global(mangled)
+            if mgi >= 0
+                gi = mgi
+                _nodes.set_d0(h, mangled_si)
         if gi < 0
             _error("undefined function")
             return TYPE_NONE
@@ -551,7 +613,9 @@ class Checker()
                     val coerce_fixed: bool = pt == TYPE_FIXED && at == TYPE_INT
                     // Allow data type passed implicitly by reference
                     val coerce_data: bool = pt >= TYPE_REF_BASE && pt < TYPE_ARRAY_BASE && at == pt - TYPE_REF_BASE
-                    if !coerce_slice && !coerce_fixed && !coerce_data
+                    // Allow enum ↔ int coercion (enums are i32 at runtime)
+                    val coerce_enum: bool = (_types.is_named(at) && _types.category(at) == i32(TypeCategory.ENUM) && pt == TYPE_INT) || (at == TYPE_INT && _types.is_named(pt) && _types.category(pt) == i32(TypeCategory.ENUM))
+                    if !coerce_slice && !coerce_fixed && !coerce_data && !coerce_enum
                         _error("argument type mismatch")
                 k++
         return _syms.global_type(gi)
@@ -575,8 +639,9 @@ class Checker()
             val bname: u8[] = _scan.str_get(bsi)
             val bgi: i32   = _syms.lookup_global(bname)
             if bgi >= 0 && _syms.global_kind(bgi) == i32(SymbolKind.ENUM_TYPE)
-                _set_expr_type(base_h, _syms.global_type(bgi))
-                return TYPE_INT
+                val enum_tid: i32 = _syms.global_type(bgi)
+                _set_expr_type(base_h, enum_tid)
+                return enum_tid  // variant has the enum's type, not raw int
         val bt: i32 = _check_expr(base_h)
         // .len on slice
         val field_name: u8[] = _scan.str_get(field_si)

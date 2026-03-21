@@ -1,4 +1,5 @@
 @signal(SIGNAL_SYS_START)
 fun on_start()
+    gpio.pin_mode(10, gpio.Mode.INPUT)
     gpio.digital_write(10, gpio.HIGH)
     exit()

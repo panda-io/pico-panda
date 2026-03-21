@@ -91,13 +91,22 @@ fun _cmd_compile()
             return
         i++
 
-    // Build combined source: boot.ppd + all .ppd files
+    i = 0
+    while i < _cfg.lib_count()
+        if !ends_with(_cfg.lib_path(i), ".ppd")
+            print_str("error: only *.ppd supported: ")
+            print_str(_cfg.lib_path(i))
+            println()
+            return
+        i++
+
+    // Build combined source: boot.ppd + lib files (with @module markers) + src files
     var pos: i32 = 0
     val buf_end: i32 = 65536
     _fm_count = 0
     var cur_line: i32 = 1
 
-    // Prepend boot program
+    // Prepend boot program (no module context)
     _fm_starts[u32(0)] = cur_line
     _fm_count = 1
     var k: i32 = 0
@@ -109,8 +118,60 @@ fun _cmd_compile()
     pos++
     cur_line = cur_line + _count_nl(0, k) + 1
 
-    // Append each source file
+    // Append each lib file preceded by "@module libname\n"
     var n: i32 = 0
+    i = 0
+    while i < _cfg.lib_count()
+        // inject "@module " + libname + "\n"
+        val lib_nm: u8[] = _cfg.lib_name(i)
+        _src_buf[pos]     = u8(64)   // '@'
+        _src_buf[pos + 1] = u8(109)  // 'm'
+        _src_buf[pos + 2] = u8(111)  // 'o'
+        _src_buf[pos + 3] = u8(100)  // 'd'
+        _src_buf[pos + 4] = u8(117)  // 'u'
+        _src_buf[pos + 5] = u8(108)  // 'l'
+        _src_buf[pos + 6] = u8(101)  // 'e'
+        _src_buf[pos + 7] = u8(32)   // ' '
+        pos = pos + 8
+        var mi: i32 = 0
+        while mi < i32(lib_nm.size()) && pos < buf_end
+            _src_buf[pos] = lib_nm[u32(mi)]
+            pos++
+            mi++
+        _src_buf[pos] = u8(10)   // '\n'
+        pos++
+        cur_line++  // the @module line itself
+        // register file map entry (after the marker line)
+        if _fm_count < 33
+            _fm_starts[u32(_fm_count)] = cur_line
+            _fm_count++
+        val file_start: i32 = pos
+        n = _read_into_src(_cfg.lib_path(i), pos, buf_end - pos)
+        if n < 0
+            print_str("error: cannot open '")
+            print_str(_cfg.lib_path(i))
+            print_str("'")
+            println()
+            return
+        pos = pos + n
+        _src_buf[pos] = u8(10)
+        pos++
+        cur_line = cur_line + _count_nl(file_start, n) + 1
+        i++
+
+    // inject "@module\n" to reset module context before src files
+    _src_buf[pos]     = u8(64)   // '@'
+    _src_buf[pos + 1] = u8(109)  // 'm'
+    _src_buf[pos + 2] = u8(111)  // 'o'
+    _src_buf[pos + 3] = u8(100)  // 'd'
+    _src_buf[pos + 4] = u8(117)  // 'u'
+    _src_buf[pos + 5] = u8(108)  // 'l'
+    _src_buf[pos + 6] = u8(101)  // 'e'
+    _src_buf[pos + 7] = u8(10)   // '\n'
+    pos = pos + 8
+    cur_line++
+
+    // Append each source file
     i = 0
     while i < _cfg.src_count()
         if _fm_count < 33
