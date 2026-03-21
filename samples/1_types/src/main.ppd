@@ -1,5 +1,11 @@
 // ── 1_types: Types, casts, and data ─────────────────────────────────────────
 
+// ── Constants (compile-time, no RAM) ───────────────────────────────────────
+
+const MAX_SPEED: int = 100
+const DIR_UP:    int = 0
+const DIR_DOWN:  int = 1
+
 // ── Data type ──────────────────────────────────────────────────────────────
 
 data Vec2
@@ -25,6 +31,12 @@ fun translate(v: Vec2, dx: int, dy: fixed)
 
 @signal(SIGNAL_SYS_START)
 fun on_start()
+    // ── Constants ──────────────────────────────────────────────────────────
+
+    print_str("MAX_SPEED: ") print_int(MAX_SPEED) print_str("\n")
+    print_str("DIR_UP:    ") print_int(DIR_UP)    print_str("\n")
+    print_str("DIR_DOWN:  ") print_int(DIR_DOWN)  print_str("\n")
+
     // ── Primitive types ────────────────────────────────────────────────────
 
     var i: int   = -7

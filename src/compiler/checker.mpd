@@ -59,6 +59,7 @@ class Checker()
         _resolve_all_types()
         _pass1_globals()
         _pass2()
+        _check_signal_ids()
         return _errors == 0
 
     fun error_count() i32
@@ -554,4 +555,54 @@ class Checker()
             if fi >= 0
                 return _types.field_type(struct_tid, fi)
         return TYPE_NONE
+
+    // ── Pass 3: Duplicate signal ID check ─────────────────────────────────
+
+    fun _check_signal_ids()
+        // Build const int map: name → value (mirrors codegen's _global_consts)
+        var const_names:  i32[64]
+        var const_vals:   i32[64]
+        var const_count:  i32 = 0
+        var i: i32 = 0
+        while i < _decls.count()
+            if _decls.kind(i) == i32(DeclKind.GLOBAL_VAR) && _decls.d3(i) == 1
+                val init_e: i32 = _decls.d2(i)
+                if init_e != -1 && _nodes.kind(init_e) == i32(ExprKind.LIT_INT)
+                    if const_count < 64
+                        const_names[u32(const_count)] = _decls.d0(i)
+                        const_vals[u32(const_count)]  = _nodes.d0(init_e)
+                        const_count++
+            i++
+        // Collect resolved signal IDs from @signal functions
+        var seen_ids:   i32[64]
+        var seen_lines: i32[64]
+        var seen_count: i32 = 0
+        i = 0
+        while i < _decls.count()
+            if _decls.kind(i) == i32(DeclKind.FUN) && _decls.ann_kind(i) == 1
+                val ann_name_si: i32 = _decls.ann_name(i)
+                var sig_id: i32 = -1
+                if ann_name_si == -1
+                    sig_id = _decls.ann_n(i)
+                else
+                    val ann_name: u8[] = _scan.str_get(ann_name_si)
+                    var ci: i32 = 0
+                    while ci < const_count
+                        if equals(_scan.str_get(const_names[u32(ci)]), ann_name)
+                            sig_id = const_vals[u32(ci)]
+                            break
+                        ci++
+                if sig_id >= 0
+                    var si: i32 = 0
+                    while si < seen_count
+                        if seen_ids[u32(si)] == sig_id
+                            _cur_line = _decls.line(i)
+                            _error("duplicate signal id")
+                            break
+                        si++
+                    if seen_count < 64
+                        seen_ids[u32(seen_count)]   = sig_id
+                        seen_lines[u32(seen_count)] = _decls.line(i)
+                        seen_count++
+            i++
 #end

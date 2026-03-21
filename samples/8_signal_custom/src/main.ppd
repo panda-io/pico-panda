@@ -1,0 +1,23 @@
+const FIRST_STEP = 100 // 0 ~ 99 are reserved
+const SECOND_STEP = 101
+const FINAL_STEP = 102
+
+@signal(SIGNAL_SYS_START)
+fun on_start()
+    print_str("sys started\n")
+    send(FIRST_STEP)
+
+@signal(FIRST_STEP)
+fun on_first_step()
+    print_str("execute first step\n")
+    send(SECOND_STEP)
+
+@signal(SECOND_STEP)
+fun on_second_step()
+    print_str("execute second step\n")
+    send(FINAL_STEP)
+    
+@signal(FINAL_STEP)
+fun on_final_step()
+    print_str("execute final step\n")
+    exit()
