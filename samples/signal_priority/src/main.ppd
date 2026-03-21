@@ -1,16 +1,16 @@
 @signal(SIGNAL_SYS_START)
 fun on_start_0()
-    console_print_str("start with priority 0\n")
+    print_str("start with priority 0\n")
 
 @signal(SIGNAL_SYS_START, 99)
 fun on_start_99()
-    console_print_str("start with priority 99\n")
+    print_str("start with priority 99\n")
 
 @signal(SIGNAL_SYS_START, -1)
 fun on_start_minus_1()
-    console_print_str("start with priority -1\n")
+    print_str("start with priority -1\n")
 
 @signal(SIGNAL_SYS_START, -99)
 fun on_start_minus_99()
-    console_print_str("start with priority -99\n")
+    print_str("start with priority -99\n")
     exit()

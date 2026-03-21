@@ -61,7 +61,10 @@ fun test_scan_var_decl()
 fun test_scan_fun_decl()
     var heap: HeapAllocator
     var sc: Scanner
-    sc.init(&heap, "fun add(a: int, b: int) int\n    return a + b\n")
+    sc.init(&heap, """
+fun add(a: int, b: int) int
+    return a + b
+""")
     assert(sc.scan())
     assert(sc.error_count() == 0)
 
@@ -104,7 +107,10 @@ fun test_parse_global_var()
 fun test_parse_fun()
     var heap: HeapAllocator
     var sc: Scanner
-    sc.init(&heap, "fun add(a: int, b: int) int\n    return a + b\n")
+    sc.init(&heap, """
+fun add(a: int, b: int) int
+    return a + b
+""")
     sc.scan()
     var p: Parser
     p.init(&heap, &sc)
@@ -124,72 +130,142 @@ fun test_compile_var()
 
 @test
 fun test_compile_fun()
-    assert(pp_compile("fun add(a: int, b: int) int\n    return a + b\n"))
+    assert(pp_compile("""
+fun add(a: int, b: int) int
+    return a + b
+"""))
 
 @test
 fun test_compile_if()
-    assert(pp_compile("fun f(a: int) int\n    if a > 0\n        return a\n    return 0\n"))
+    assert(pp_compile("""
+fun f(a: int) int
+    if a > 0
+        return a
+    return 0
+"""))
 
 @test
 fun test_compile_while()
-    assert(pp_compile("fun f()\n    var x: int = 0\n    while x < 10\n        x = x + 1\n"))
+    assert(pp_compile("""
+fun f()
+    var x: int = 0
+    while x < 10
+        x = x + 1
+"""))
 
 @test
 fun test_compile_for_range()
-    assert(pp_compile("fun f()\n    var r: int = 0\n    for i in 0..10\n        r = r + 1\n"))
+    assert(pp_compile("""
+fun f()
+    var r: int = 0
+    for i in 0..10
+        r = r + 1
+"""))
 
 // ── Checker error tests ───────────────────────────────────────────────────────
 
 @test
 fun test_checker_undefined_ident()
-    assert(!pp_compile("fun f() int\n    return x\n"))
+    assert(!pp_compile("""
+fun f() int
+    return x
+"""))
 
 @test
 fun test_checker_break_outside_loop()
-    assert(!pp_compile("fun f()\n    break\n"))
+    assert(!pp_compile("""
+fun f()
+    break
+"""))
+
+@test
+fun test_checker_type_mismatch()
+    assert(!pp_compile("""
+fun f()
+    var a: int = 1
+    var b: fixed = 1.5
+    var c: int = a + b
+"""))
 
 // ── asm() statement tests ─────────────────────────────────────────────────────
 
 @test
 fun test_compile_string_type()
-    // string variable + parameter
-    assert(pp_compile("var msg: string = \"hello\"\nfun f(s: string)\n    var t: string = s\n"))
+    assert(pp_compile("""
+var msg: string = "hello"
+fun f(s: string)
+    var t: string = s
+"""))
 
 @test
 fun test_compile_asm()
-    assert(pp_compile("fun f(v: int)\n    asm(\"LOAD_LOCAL v\")\n    asm(\"CALL_MODULE CONSOLE PRINT_INT\")\n"))
+    assert(pp_compile("""
+fun f(v: int)
+    asm("LOAD_LOCAL v")
+    asm("CALL_MODULE CONSOLE PRINT_INT")
+"""))
 
 // ── @signal annotation tests ──────────────────────────────────────────────────
 
 @test
 fun test_compile_signal_sys_start()
-    assert(pp_compile("const SIGNAL_SYS_START: int = 1\n@signal(SIGNAL_SYS_START)\nfun on_start()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+    assert(pp_compile("""
+const SIGNAL_SYS_START: int = 1
+@signal(SIGNAL_SYS_START)
+fun on_start()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+"""))
 
 @test
 fun test_compile_tick()
-    assert(pp_compile("@tick(1)\nfun on_tick()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+    assert(pp_compile("""
+@tick(1)
+fun on_tick()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+"""))
 
 @test
 fun test_compile_tick_count()
-    assert(pp_compile("@tick(3)\nfun on_slow()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+    assert(pp_compile("""
+@tick(3)
+fun on_slow()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+"""))
 
 @test
 fun test_compile_interval()
-    assert(pp_compile("@interval(500)\nfun on_timer()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+    assert(pp_compile("""
+@interval(500)
+fun on_timer()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+"""))
 
 // ── Priority annotation tests ──────────────────────────────────────────────────
 
 @test
 fun test_compile_tick_with_priority()
-    assert(pp_compile("@tick(1, 10)\nfun on_high()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+    assert(pp_compile("""
+@tick(1, 10)
+fun on_high()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+"""))
 
 @test
 fun test_compile_signal_with_priority()
-    assert(pp_compile("const SIGNAL_SYS_START: int = 1\n@signal(SIGNAL_SYS_START, 5)\nfun on_start()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+    assert(pp_compile("""
+const SIGNAL_SYS_START: int = 1
+@signal(SIGNAL_SYS_START, 5)
+fun on_start()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+"""))
 
 @test
 fun test_compile_interval_with_priority()
-    assert(pp_compile("@interval(500, 2)\nfun on_timer()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"))
+    assert(pp_compile("""
+@interval(500, 2)
+fun on_timer()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+"""))
 
 // Return the byte offset of needle in haystack, or -1 if not found.
 fun _find_str(hay: u8[], needle: u8[]) i32
@@ -207,7 +283,14 @@ fun _find_str(hay: u8[], needle: u8[]) i32
 @test
 fun test_compile_priority_ordering()
     var c: Compiler
-    val src: u8[] = "@tick(1, 10)\nfun high()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n@tick(1, 1)\nfun low()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"
+    val src: u8[] = """
+@tick(1, 10)
+fun high()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+@tick(1, 1)
+fun low()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+"""
     assert(c.compile(src))
     val out: u8[] = c.asm_output()
     val pos_high: i32 = _find_str(out, "__wrap_high")
@@ -219,7 +302,14 @@ fun test_compile_priority_ordering()
 @test
 fun test_compile_priority_equal_stable()
     var c: Compiler
-    val src: u8[] = "@tick(1)\nfun first()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n@tick(1)\nfun second()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"
+    val src: u8[] = """
+@tick(1)
+fun first()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+@tick(1)
+fun second()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+"""
     assert(c.compile(src))
     val out: u8[] = c.asm_output()
     val pos_first:  i32 = _find_str(out, "__wrap_first")
@@ -230,8 +320,11 @@ fun test_compile_priority_equal_stable()
 @test
 fun test_negative_priority_stored()
     var c: Compiler
-    // @tick(1, -5): priority should be stored as -5
-    val src: u8[] = "@tick(1, -5)\nfun neg5()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"
+    val src: u8[] = """
+@tick(1, -5)
+fun neg5()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+"""
     assert(c.compile(src))
     val decls: &DeclList = c.parser().decls()
     var found_pri: i32 = 9999
@@ -245,7 +338,14 @@ fun test_negative_priority_stored()
 @test
 fun test_compile_negative_priority_ordering()
     var c: Compiler
-    val src: u8[] = "@tick(1, -1)\nfun neg1()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n@tick(1)\nfun zero()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\n"
+    val src: u8[] = """
+@tick(1, -1)
+fun neg1()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+@tick(1)
+fun zero()
+    asm("CALL_MODULE SIGNAL EXIT_HANDLER")
+"""
     assert(c.compile(src))
     val out: u8[] = c.asm_output()
     val pos_zero: i32 = _find_str(out, "__wrap_zero")
@@ -254,17 +354,29 @@ fun test_compile_negative_priority_ordering()
     // zero (priority 0) should appear before neg1 (priority -1)
     assert(pos_zero < pos_neg1)
 
-// ── End-to-end test ───────────────────────────────────────────────────────────
+// ── End-to-end tests ──────────────────────────────────────────────────────────
 
 @test
 fun test_e2e_add()
     // Compile add(a, b) int; prepend a main wrapper; assemble; run via VM.
     var c: Compiler
-    assert(c.compile("fun add(a: int, b: int) int\n    return a + b\n"))
+    assert(c.compile("""
+fun add(a: int, b: int) int
+    return a + b
+"""))
     val fn_asm: u8[] = c.asm_output()
 
     // main: push 3, push 4, call add, print result, exit
-    val header: u8[] = ".code\nfun main:\n    PUSH 3\n    PUSH 4\n    CALL add\n    CALL_MODULE CONSOLE PRINT_INT\n    CALL_MODULE SIGNAL EXIT_HANDLER\n    RET\n"
+    val header: u8[] = """
+.code
+fun main:
+    PUSH 3
+    PUSH 4
+    CALL add
+    CALL_MODULE CONSOLE PRINT_INT
+    CALL_MODULE SIGNAL EXIT_HANDLER
+    RET
+"""
 
     // concatenate header + fn_asm into a fixed buffer
     var combined: u8[2048]
@@ -301,18 +413,31 @@ fun test_e2e_add()
     assert(equals(_out(), "7"))
 
 @test
-fun test_checker_type_mismatch()
-    assert(!pp_compile("fun f()\n    var a: int = 1\n    var b: fixed = 1.5\n    var c: int = a + b\n"))
-
-@test
 fun test_compile_data_type()
-    assert(pp_compile("data Vec2\n    x: int\n    y: fixed\nvar g: Vec2\n"))
+    assert(pp_compile("""
+data Vec2
+    x: int
+    y: fixed
+var g: Vec2
+"""))
 
 @test
 fun test_e2e_data_field()
-    // Compile: global struct, set field, print, exit via SIGNAL_EXIT handler.
+    // Compile: global struct, set field, print via asm, exit via wrapper EXIT_HANDLER.
     var c: Compiler
-    val src: u8[] = "fun console_print_int(v: int)\n    asm(\"LOAD_LOCAL v\")\n    asm(\"CALL_MODULE CONSOLE PRINT_INT\")\nfun signal_handler_exit()\n    asm(\"CALL_MODULE SIGNAL EXIT_HANDLER\")\ndata Vec2\n    x: int\n    y: fixed\nvar g_v: Vec2\n@signal(1)\nfun on_start()\n    g_v.x = 42\n    console_print_int(g_v.x)\n    signal_handler_exit()\n"
+    val src: u8[] = """
+fun print_int(v: int)
+    asm("LOAD_LOCAL v")
+    asm("CALL_MODULE CONSOLE PRINT_INT")
+data Vec2
+    x: int
+    y: fixed
+var g_v: Vec2
+@signal(1)
+fun on_start()
+    g_v.x = 42
+    print_int(g_v.x)
+"""
     assert(c.compile(src))
     val asm_text: u8[] = c.asm_output()
 

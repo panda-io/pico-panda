@@ -1,4 +1,4 @@
-val boot_program := '''
+val boot_program := """
 
 // ── boot.ppd ──────────────────────────────────────────────────────────────────
 // Built-in module bindings for Pico-Panda programs.
@@ -16,33 +16,23 @@ const SIGNAL_EXIT:      int = 99
 
 // ── Console ───────────────────────────────────────────────────────────────────
 
-fun console_print_bool(v: bool)
+fun print_bool(v: bool)
     asm("LOAD_LOCAL v")
     asm("CALL_MODULE CONSOLE PRINT_BOOL")
 
-fun console_print_int(v: int)
+fun print_int(v: int)
     asm("LOAD_LOCAL v")
     asm("CALL_MODULE CONSOLE PRINT_INT")
 
-fun console_print_fixed(v: fixed)
+fun print_fixed(v: fixed)
     asm("LOAD_LOCAL v")
     asm("CALL_MODULE CONSOLE PRINT_FIXED")
 
-fun console_print_str(s: string)
+fun print_str(s: string)
     asm("LOAD_LOCAL s")
     asm("CALL_MODULE CONSOLE PRINT_STR")
 
 // ── Signal ────────────────────────────────────────────────────────────────────
-
-// Register a handler function address for a signal id.
-fun signal_create_handler(id: int, addr: int)
-    asm("LOAD_LOCAL id")
-    asm("LOAD_LOCAL addr")
-    asm("CALL_MODULE SIGNAL CREATE_HANDLER")
-
-// Exit the current signal handler (task finishes).
-@asm("CALL_MODULE SIGNAL EXIT_HANDLER")
-fun signal_handler_exit()
 
 // Send a signal with up to 4 register params.
 // Params are stored via STORE_REG before SEND_SIGNAL copies task.regs to signal.regs.
@@ -73,6 +63,5 @@ fun signal_param_bool(slot: int) bool
 // Exit the program: queue SIGNAL_EXIT then finish this handler.
 fun exit()
     signal_send(SIGNAL_EXIT, 0, 0, 0, 0)
-    signal_handler_exit()
 
-'''
+"""

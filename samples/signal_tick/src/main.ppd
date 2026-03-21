@@ -2,8 +2,8 @@ var cooldown: int = 10
     
 @tick(10)
 fun on_tick()
-    console_print_int(cooldown)
-    console_print_str("\n")
+    print_int(cooldown)
+    print_str("\n")
     cooldown -= 1
     if cooldown <=0
         exit()

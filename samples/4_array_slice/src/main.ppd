@@ -18,19 +18,19 @@ var temp_slice:  fixed[] = temps
 
 fun print_int_array(list: int[])
     for v in list
-        console_print_int(v)
-        console_print_str(" ")
-    console_print_str("   size: ")
-    console_print_int(list.size())
-    console_print_str("\n")
+        print_int(v)
+        print_str(" ")
+    print_str("   size: ")
+    print_int(list.size())
+    print_str("\n")
 
 fun print_fixed_array(list: fixed[])
     for v in list
-        console_print_fixed(v)
-        console_print_str(" ")
-    console_print_str("   size: ")
-    console_print_int(list.size())
-    console_print_str("\n")
+        print_fixed(v)
+        print_str(" ")
+    print_str("   size: ")
+    print_int(list.size())
+    print_str("\n")
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
@@ -45,23 +45,23 @@ fun on_start()
     scores[3] = 40
     scores[4] = 50
 
-    console_print_str("scores:        ")
+    print_str("scores:        ")
     print_int_array(score_slice)
 
     // ── Modify via array; slice sees the change ──────────────────────────────
 
     scores[2] = 99
 
-    console_print_str("scores[2]=99:  ")
+    print_str("scores[2]=99:  ")
     print_int_array(score_slice)
 
     // ── Modify via slice; array sees the change ──────────────────────────────
 
     score_slice[4] = 77
 
-    console_print_str("slice[4]=77:   ")
+    print_str("slice[4]=77:   ")
     print_int_array(score_slice)
-    console_print_str("array check:   ") console_print_int(scores[4]) console_print_str("\n")
+    print_str("array check:   ") print_int(scores[4]) print_str("\n")
 
     // ── Accumulate through slice ─────────────────────────────────────────────
 
@@ -71,7 +71,7 @@ fun on_start()
         total = total + score_slice[i]
         i = i + 1
 
-    console_print_str("sum:           ") console_print_int(total) console_print_str("\n")
+    print_str("sum:           ") print_int(total) print_str("\n")
 
     // ── fixed[] ─────────────────────────────────────────────────────────────
 
@@ -80,12 +80,12 @@ fun on_start()
     temps[2] = 38.25
     temps[3] = 36.75
 
-    console_print_str("\ntemps:         ")
+    print_str("\ntemps:         ")
     print_fixed_array(temp_slice)
 
     temps[1] = 40.0
 
-    console_print_str("temps[1]=40.0: ")
+    print_str("temps[1]=40.0: ")
     print_fixed_array(temp_slice)
 
     // ── bool[] ──────────────────────────────────────────────────────────────
@@ -94,16 +94,16 @@ fun on_start()
     flags[1] = false
     flags[2] = true
 
-    console_print_str("\nflags:         ")
-    console_print_bool(flags[0]) console_print_str(" ")
-    console_print_bool(flags[1]) console_print_str(" ")
-    console_print_bool(flags[2]) console_print_str("\n")
+    print_str("\nflags:         ")
+    print_bool(flags[0]) print_str(" ")
+    print_bool(flags[1]) print_str(" ")
+    print_bool(flags[2]) print_str("\n")
 
     flags[1] = true
 
-    console_print_str("flags[1]=true: ")
-    console_print_bool(flags[0]) console_print_str(" ")
-    console_print_bool(flags[1]) console_print_str(" ")
-    console_print_bool(flags[2]) console_print_str("\n")
+    print_str("flags[1]=true: ")
+    print_bool(flags[0]) print_str(" ")
+    print_bool(flags[1]) print_str(" ")
+    print_bool(flags[2]) print_str("\n")
 
     exit()
