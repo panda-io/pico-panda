@@ -1,0 +1,9 @@
+const gpio_HIGH: int = 1
+const gpio_LOW: int = 0
+
+fun gpio_digital_write(pin: int, value: int)
+    print_str("digital write pin ")
+    print_int(pin)
+    print_str(" value ")
+    print_int(value)
+    print_str(" \n")

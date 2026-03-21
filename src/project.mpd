@@ -107,7 +107,7 @@ class PpdConfig()
             val value: u8[] = trim(sub(line, vstart, line.size() - vstart))
             if value.size() == u32(0)
                 continue
-            if equals(key, "src")
+            if equals(key, "src") || equals(key, "lib")
                 if ends_with(value, "/")
                     _scan_folder(value)
                 else
