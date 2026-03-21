@@ -37,6 +37,7 @@ class TypeTable()
 
     fun init(heap: &HeapAllocator)
         _heap = heap
+        _next_id = 4
         _name_to_id.init(heap)
         _categories.init(heap)
         _field_start.init(heap)

@@ -207,6 +207,9 @@ class Codegen()
             _put_str("[")
             _put_int(dim)
             _put_str("]")
+        else if type_id >= 4000
+            // named type (data/enum): stored as 4000 + string_index by parser
+            _put_str(_scan.str_get(type_id - 4000))
         else
             _put_str(_type_str(type_id))
         _put_str("\n")
@@ -402,6 +405,8 @@ class Codegen()
             _put_str("    PUSH 4\n")
             _put_str("    MUL_INT\n")
             _put_str("    ADD_INT\n")
+        else if k == i32(ExprKind.FIELD)
+            _gen_field_addr(_nodes.d0(h), _nodes.d1(h))
 
     fun _gen_if(h: i32)
         val cond:   i32 = _nodes.d0(h)
@@ -547,6 +552,8 @@ class Codegen()
             _put_str("    LOAD_GLOBAL_IND\n")
         else if k == i32(ExprKind.FIELD)
             _gen_field_expr(h)
+        else if k == i32(ExprKind.REF)
+            _gen_lvalue_addr(_nodes.d0(h))
 
     fun _gen_load_ident(si: i32)
         val name: u8[] = _scan.str_get(si)
@@ -738,6 +745,26 @@ class Codegen()
         else if from == TYPE_FIXED && to == TYPE_INT
             _put_str("    FIXED_TO_INT\n")
 
+    // Compute the address of a struct field on the stack (no load).
+    // For ref base: loads the pointer value then adds field offset.
+    // For non-ref base: pushes the base address then adds field offset.
+    fun _gen_field_addr(base: i32, fsi: i32)
+        val bt: i32 = _chk.expr_type(base)
+        var struct_tid: i32 = bt
+        if bt >= TYPE_REF_BASE && bt < TYPE_ARRAY_BASE
+            struct_tid = bt - TYPE_REF_BASE
+            _gen_expr(base)   // load the pointer value stored in the ref variable
+        else
+            _gen_lvalue_addr(base)
+        val sname: u8[] = _struct_name(struct_tid)
+        val fname: u8[] = _scan.str_get(fsi)
+        _put_str("    PUSH_FIELD_OFFSET ")
+        _put_str(sname)
+        _put_str(" ")
+        _put_str(fname)
+        _put_str("\n")
+        _put_str("    ADD_INT\n")
+
     fun _gen_field_expr(h: i32)
         val base: i32 = _nodes.d0(h)
         val fsi:  i32 = _nodes.d1(h)
@@ -759,15 +786,7 @@ class Codegen()
         if bt >= TYPE_REF_BASE && bt < TYPE_ARRAY_BASE
             struct_tid = bt - TYPE_REF_BASE
         if struct_tid >= 4 && _types.category(struct_tid) == i32(TypeCategory.DATA)
-            val sname: u8[] = _struct_name(struct_tid)
-            val fname: u8[] = _scan.str_get(fsi)
-            _gen_lvalue_addr(base)
-            _put_str("    PUSH_FIELD_OFFSET ")
-            _put_str(sname)
-            _put_str(" ")
-            _put_str(fname)
-            _put_str("\n")
-            _put_str("    ADD_INT\n")
+            _gen_field_addr(base, fsi)
             _put_str("    LOAD_GLOBAL_IND\n")
 
     // ── Signal glue ───────────────────────────────────────────────────────────
@@ -821,11 +840,16 @@ class Codegen()
             val fn_name: u8[] = _scan.str_get(_decls.d0(di))
             var sig_id: i32 = 0
             if annk == 1
-                sig_id = _resolve_signal_id(_decls.ann_name(di))
-                if sig_id == -1
-                    _errors++
-                    j++
-                    continue
+                val ann_name_si: i32 = _decls.ann_name(di)
+                if ann_name_si == -1
+                    // literal integer signal id
+                    sig_id = _decls.ann_n(di)
+                else
+                    sig_id = _resolve_signal_id(ann_name_si)
+                    if sig_id == -1
+                        _errors++
+                        j++
+                        continue
             else
                 sig_id = _tick_signal_id()
             _put_str("    PUSH ")

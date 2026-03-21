@@ -326,12 +326,16 @@ class Parser()
         var sig_ident_si: i32 = -1
         var sig_n: i32 = -1
         if ann_kind == 1
-            // @signal(IDENT) — signal constant identifier
-            if _kind() != i32(TokenKind.IDENT)
+            // @signal(IDENT | INT) — signal constant identifier or literal integer
+            if _kind() == i32(TokenKind.LIT_INT)
+                sig_n = _val()
+                _advance()
+            else if _kind() == i32(TokenKind.IDENT)
+                sig_ident_si = _val()
+                _advance()
+            else
                 _error("expected signal constant identifier")
                 return false
-            sig_ident_si = _val()
-            _advance()
         else if ann_kind == 4
             // @asm("template") — assembly template string
             if _kind() != i32(TokenKind.LIT_STR)

@@ -1,0 +1,67 @@
+// ── 1_types: Types, casts, and references ──────────────────────────────────
+
+// ── Data type ──────────────────────────────────────────────────────────────
+
+data Vec2
+    x: int
+    y: fixed
+
+var g_vec: Vec2
+
+// ── Helper functions ───────────────────────────────────────────────────────
+
+fun print_vec(v: &Vec2)
+    console_print_str("Vec2(")
+    console_print_int(v.x)
+    console_print_str(", ")
+    console_print_fixed(v.y)
+    console_print_str(")")
+
+fun translate(v: &Vec2, dx: int, dy: fixed)
+    v.x = v.x + dx
+    v.y = v.y + dy
+
+// ── Main ───────────────────────────────────────────────────────────────────
+
+@signal(SIGNAL_SYS_START)
+fun on_start()
+
+    // ── Primitive types ────────────────────────────────────────────────────
+
+    val i: int   = -7
+    val f: fixed = 1.5
+    val b: bool  = true
+    val s: string = "pico-panda"
+
+    console_print_str("int:    ") console_print_int(i)   console_print_str("\n")
+    console_print_str("fixed:  ") console_print_fixed(f) console_print_str("\n")
+    console_print_str("bool:   ") console_print_bool(b)  console_print_str("\n")
+    console_print_str("string: ") console_print_str(s)   console_print_str("\n")
+
+    // ── Type conversions ───────────────────────────────────────────────────
+
+    // int literal assigned to fixed (implicit — uses INT_TO_FIXED)
+    val coerced: fixed = 3
+
+    // explicit casts
+    val to_int:   int   = int(2.75)    // truncates → 2
+    val to_fixed: fixed = fixed(10)    // exact    → 10.000000
+
+    console_print_str("\n")
+    console_print_str("int literal as fixed: ") console_print_fixed(coerced)  console_print_str("\n")
+    console_print_str("fixed(2.75) → int:    ") console_print_int(to_int)     console_print_str("\n")
+    console_print_str("int(10) → fixed:      ") console_print_fixed(to_fixed) console_print_str("\n")
+
+    // ── Data type + reference ──────────────────────────────────────────────
+
+    g_vec.x = 4
+    g_vec.y = 0.5
+
+    console_print_str("\n")
+    console_print_str("initial:    ") print_vec(&g_vec) console_print_str("\n")
+
+    translate(&g_vec, 3, 1.25)
+
+    console_print_str("after move: ") print_vec(&g_vec) console_print_str("\n")
+
+    exit()
