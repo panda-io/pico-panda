@@ -1,7 +1,7 @@
 var cooldown: int = 10
 
-@tick(10)
-fun on_tick()
+@interval(100)
+fun on_timer()
     print_int(cooldown)
     print_str("\n")
     cooldown -= 1
