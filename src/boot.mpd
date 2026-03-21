@@ -40,4 +40,9 @@ fun send(id: int)
 fun exit()
     send(SIGNAL_EXIT)
 
+// Delta time in milliseconds (fixed-point) for the current tick.
+// Valid inside any @tick or @interval handler.
+fun tick_ms() fixed
+    asm("LOAD_REG 0")
+
 """

@@ -456,4 +456,18 @@ fun on_start()
     vm_tick(1)   // dispatch queued signals (signal 1 fires on_start)
     console.init(_stdout_write)
     assert(equals(_out(), "42"))
+
+@test
+fun test_drop_on_unused_call()
+    // Calling a value-returning function as a statement must emit DROP to keep stack balanced.
+    var c: Compiler
+    val src: u8[] = """
+fun returns_int() int
+    asm("PUSH 42")
+@tick(1)
+fun on_tick()
+    returns_int()
+"""
+    assert(c.compile(src))
+    assert(_find_str(c.asm_output(), "DROP") >= 0)
 #end
