@@ -1,0 +1,143 @@
+// ── 3_statements: Supported statement forms ───────────────────────────────────
+
+data Point
+    x: int
+    y: int
+
+const UP:    int = 0
+const DOWN:  int = 1
+const LEFT:  int = 2
+const RIGHT: int = 3
+
+fun move_up()
+    print_str("move_up\n")
+
+fun move_down()
+    print_str("move_down\n")
+
+fun move_left()
+    print_str("move_left\n")
+
+fun move_right()
+    print_str("move_right\n")
+
+fun max_int(a: int, b: int) int
+    if a > b
+        return a
+    return b
+
+var g_items: int[4]
+var g_pt: Point
+
+@signal(SIGNAL_SYS_START)
+fun on_start()
+
+    // ── var ───────────────────────────────────────────────────────────────────
+    print_str("── var ──\n")
+    var a: int = 10
+    var b: int = 20
+    print_str("a=") print_int(a) print_str(" b=") print_int(b) print_str("\n")
+
+    print_str("\n")
+
+    // ── if / else if / else ───────────────────────────────────────────────────
+    print_str("── if / else if / else ──\n")
+    var x: int = 5
+    if x < 3
+        print_str("small\n")
+    else if x < 7
+        print_str("medium\n")
+    else
+        print_str("large\n")
+
+    print_str("\n")
+
+    // ── while ─────────────────────────────────────────────────────────────────
+    print_str("── while ──\n")
+    var i: int = 0
+    while i < 4
+        print_int(i) print_str(" ")
+        i += 1
+    print_str("\n")
+
+    print_str("\n")
+
+    // ── break / continue ──────────────────────────────────────────────────────
+    print_str("── break / continue ──\n")
+    i = 0
+    while i < 10
+        i += 1
+        if i == 3
+            continue
+        if i == 6
+            break
+        print_int(i) print_str(" ")
+    print_str("\n")
+
+    print_str("\n")
+
+    // ── for i in lo..hi ───────────────────────────────────────────────────────
+    print_str("── for i in lo..hi ──\n")
+    g_items[0] = 10
+    g_items[1] = 20
+    g_items[2] = 30
+    g_items[3] = 40
+    for i in 0..4
+        print_int(g_items[i]) print_str(" ")
+    print_str("\n")
+
+    print_str("\n")
+
+    // ── for item in slice ─────────────────────────────────────────────────────
+    print_str("── for item in slice ──\n")
+    for item in g_items
+        print_int(item) print_str(" ")
+    print_str("\n")
+
+    print_str("\n")
+
+    // ── match (int) ───────────────────────────────────────────────────────────
+    print_str("── match int ──\n")
+    var n: int = 2
+    match n
+        1:
+            print_str("one\n")
+        2:
+            print_str("two\n")
+        3:
+            print_str("three\n")
+        _:
+            print_str("other\n")
+
+    print_str("\n")
+
+    // ── match (const / enum-like) ─────────────────────────────────────────────
+    print_str("── match direction ──\n")
+    var dir: int = RIGHT
+    match dir
+        UP:
+            move_up()
+        DOWN:
+            move_down()
+        LEFT:
+            move_left()
+        RIGHT:
+            move_right()
+        _:
+            print_str("unknown\n")
+
+    print_str("\n")
+
+    // ── data field access ─────────────────────────────────────────────────────
+    print_str("── data field ──\n")
+    g_pt.x = 42
+    g_pt.y = 99
+    print_str("pt.x=") print_int(g_pt.x) print_str(" pt.y=") print_int(g_pt.y) print_str("\n")
+
+    print_str("\n")
+
+    // ── return ────────────────────────────────────────────────────────────────
+    print_str("── return ──\n")
+    print_str("max(3,7)=") print_int(max_int(3, 7)) print_str("\n")
+
+    exit()

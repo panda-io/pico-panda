@@ -292,6 +292,8 @@ class Codegen()
             _put_str("    ")
             _put_str(_scan.str_get(_nodes.d0(h)))
             _put_str("\n")
+        else if k == i32(StmtKind.MATCH)
+            _gen_match(h)
         else if k == i32(StmtKind.EXPR_STMT)
             _gen_expr(_nodes.d0(h))
             if _expr_pushes_value(_nodes.d0(h))
@@ -446,6 +448,42 @@ class Codegen()
         _put_label_def(lbl_else)
         if else_s != -1
             _gen_stmt(else_s)
+        _put_label_def(lbl_end)
+
+    fun _gen_match(h: i32)
+        val expr:       i32 = _nodes.d0(h)
+        val arms_start: i32 = _nodes.d1(h)
+        val arms_count: i32 = _nodes.d2(h)
+        val lbl_end: i32 = _new_label()
+        _gen_expr(expr)   // push match value once
+        var i: i32 = 0
+        while i < arms_count
+            val arm_h:  i32 = _nodes.child_get(arms_start + i)
+            val pat:    i32 = _nodes.d0(arm_h)
+            val body:   i32 = _nodes.d1(arm_h)
+            val is_last: bool = i == arms_count - 1
+            if pat == -1
+                // wildcard arm (_): just drop the match value and run body
+                _put_str("    DROP\n")
+                _gen_stmt(body)
+            else
+                val lbl_next: i32 = _new_label()
+                _put_str("    DUP\n")
+                _gen_expr(pat)
+                _put_str("    CMP_EQ_INT\n")
+                _put_str("    JMP_IF_FALSE ")
+                _put_label_ref(lbl_next)
+                _put_str("\n")
+                _put_str("    DROP\n")   // discard duplicated match value
+                _gen_stmt(body)
+                _put_str("    JMP ")
+                _put_label_ref(lbl_end)
+                _put_str("\n")
+                _put_label_def(lbl_next)
+                if is_last
+                    // no wildcard: discard match value after last arm
+                    _put_str("    DROP\n")
+            i++
         _put_label_def(lbl_end)
 
     fun _gen_while(h: i32)

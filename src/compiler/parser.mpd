@@ -761,15 +761,16 @@ class Parser()
         return _nodes.stmt_match(expr, arms_start, arms_count)
 
     fun _parse_match_arm() i32
-        // pattern → body
+        // pattern: body
         // pattern: literal, IDENT (enum value like Foo.Bar), or '_' (wildcard)
         var pattern: i32 = -1   // -1 = wildcard
-        if _kind() == i32(TokenKind.UNDERSCORE)
+        if _kind() == i32(TokenKind.IDENT) && equals(_scan.str_get(_val()), "_")
             _advance()
         else
             pattern = _parse_expr()
-        if !_expect(i32(TokenKind.ARROW))
+        if !_expect(i32(TokenKind.COLON))
             return -1
+        _consume_newline()
         // body: single expr-stmt OR indented block
         var body: i32 = -1
         if _kind() == i32(TokenKind.INDENT)
