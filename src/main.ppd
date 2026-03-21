@@ -1,0 +1,15 @@
+data Point
+    x: int
+    y: int
+
+var pts: Point[3]
+
+@signal(SIGNAL_SYS_START)
+fun on_start()
+    pts[0].x = 1  pts[0].y = 2
+    pts[1].x = 3  pts[1].y = 4
+    pts[2].x = 5  pts[2].y = 6
+    for i in 0..3
+        print_str("(") print_int(pts[i].x) print_str(",") print_int(pts[i].y) print_str(") ")
+    print_str("\n")
+    exit()

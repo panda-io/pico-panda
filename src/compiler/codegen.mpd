@@ -166,9 +166,10 @@ class Codegen()
         while i < _decls.count()
             if _decls.kind(i) == i32(DeclKind.GLOBAL_VAR)
                 if _decls.d3(i) == 1
-                    // Constant: if init is a literal int, register for inline push
+                    // Constant: int/fixed/bool literals → inline PUSH (no RAM)
                     val init_e: i32 = _decls.d2(i)
-                    if init_e != -1 && _nodes.kind(init_e) == i32(ExprKind.LIT_INT)
+                    val ek: i32 = _nodes.kind(init_e)
+                    if init_e != -1 && (ek == i32(ExprKind.LIT_INT) || ek == i32(ExprKind.LIT_FIXED) || ek == i32(ExprKind.LIT_BOOL))
                         val name_si: i32 = _decls.d0(i)
                         _global_consts.set(_scan.str_get(name_si), _nodes.d0(init_e))
                     else
@@ -201,14 +202,22 @@ class Codegen()
         _put_str(".global ")
         _put_str(name)
         _put_str(": ")
-        if type_id >= TYPE_ARRAY_BASE && type_id < TYPE_SLICE_BASE
+        if type_id >= TYPE_ARRAY_BASE + 4000
+            // named type array: e.g. Point[3]  (raw = TYPE_ARRAY_BASE + 4000+si)
+            val elem_raw: i32 = type_id - TYPE_ARRAY_BASE  // = 4000+si
+            _put_str(_scan.str_get(elem_raw - 4000))
+            _put_str("[")
+            _put_int(dim)
+            _put_str("]")
+        else if type_id >= TYPE_ARRAY_BASE && type_id < TYPE_SLICE_BASE
+            // primitive array: int[N], fixed[N], etc.
             val elem: i32 = type_id - TYPE_ARRAY_BASE
             _put_str(_type_str(elem))
             _put_str("[")
             _put_int(dim)
             _put_str("]")
         else if type_id >= 4000
-            // named type (data/enum): stored as 4000 + string_index by parser
+            // plain named type scalar (data/enum)
             _put_str(_scan.str_get(type_id - 4000))
         else
             _put_str(_type_str(type_id))
@@ -425,7 +434,12 @@ class Codegen()
             if elem_t == TYPE_BYTE
                 _put_str("    ADD_INT\n")
             else
-                _put_str("    PUSH 4\n")
+                var stride: i32 = 4
+                if _types.is_named(elem_t) && _types.category(elem_t) == i32(TypeCategory.DATA)
+                    stride = _types.field_count(elem_t) * 4
+                _put_str("    PUSH ")
+                _put_int(stride)
+                _put_str("\n")
                 _put_str("    MUL_INT\n")
                 _put_str("    ADD_INT\n")
         else if k == i32(ExprKind.FIELD)
@@ -626,10 +640,15 @@ class Codegen()
         _put_str("    LOAD_LOCAL __k")
         _put_int(lbl_loop)
         _put_str("\n")
+        var for_stride: i32 = 4
+        if elem_t >= 4 && _types.is_named(elem_t) && _types.category(elem_t) == i32(TypeCategory.DATA)
+            for_stride = _types.field_count(elem_t) * 4
         if elem_t == TYPE_BYTE
             _put_str("    ADD_INT\n")
         else
-            _put_str("    PUSH 4\n    MUL_INT\n    ADD_INT\n")
+            _put_str("    PUSH ")
+            _put_int(for_stride)
+            _put_str("\n    MUL_INT\n    ADD_INT\n")
         _put_str("    LOAD_GLOBAL_IND\n")
         _put_str("    STORE_LOCAL ")
         _put_str(vname)

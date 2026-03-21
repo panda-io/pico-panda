@@ -2,9 +2,9 @@
 
 // ── Constants (compile-time, no RAM) ───────────────────────────────────────
 
-const MAX_SPEED: int = 100
-const DIR_UP:    int = 0
-const DIR_DOWN:  int = 1
+const MAX_SPEED: int   = 100
+const GRAVITY:   fixed = 9.8
+const ACTIVE:    bool  = true
 
 // ── Data type ──────────────────────────────────────────────────────────────
 
@@ -33,9 +33,11 @@ fun translate(v: Vec2, dx: int, dy: fixed)
 fun on_start()
     // ── Constants ──────────────────────────────────────────────────────────
 
-    print_str("MAX_SPEED: ") print_int(MAX_SPEED) print_str("\n")
-    print_str("DIR_UP:    ") print_int(DIR_UP)    print_str("\n")
-    print_str("DIR_DOWN:  ") print_int(DIR_DOWN)  print_str("\n")
+    print_str("MAX_SPEED: ") print_int(MAX_SPEED)   print_str("\n")
+    print_str("GRAVITY:   ") print_fixed(GRAVITY)   print_str("\n")
+    print_str("ACTIVE:    ") print_bool(ACTIVE)     print_str("\n")
+
+    print_str("\n")
 
     // ── Primitive types ────────────────────────────────────────────────────
 
@@ -49,29 +51,26 @@ fun on_start()
     print_str("bool:   ") print_bool(b)  print_str("\n")
     print_str("string: ") print_str(s)   print_str("\n")
 
+    print_str("\n")
+
     // ── Type conversions ───────────────────────────────────────────────────
 
-    // int literal assigned to fixed (implicit — uses INT_TO_FIXED)
-    var coerced: fixed = 3
-
-    // explicit casts
+    var coerced: fixed = 3             // int literal → fixed (INT_TO_FIXED)
     var to_int:   int   = int(2.75)    // truncates → 2
     var to_fixed: fixed = fixed(10)    // exact    → 10.000000
 
-    print_str("\n")
     print_str("int literal as fixed: ") print_fixed(coerced)  print_str("\n")
     print_str("fixed(2.75) → int:    ") print_int(to_int)     print_str("\n")
     print_str("int(10) → fixed:      ") print_fixed(to_fixed) print_str("\n")
+
+    print_str("\n")
 
     // ── Data type ──────────────────────────────────────────────────────────
 
     g_vec.x = 4
     g_vec.y = 0.5
 
-    print_str("\n")
     print_str("initial:    ") print_vec(g_vec) print_str("\n")
-
     translate(g_vec, 3, 1.25)
-
     print_str("after move: ") print_vec(g_vec) print_str("\n")
     exit()

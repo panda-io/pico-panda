@@ -14,7 +14,16 @@ var flags:  bool[3]
 var score_slice: int[]   = scores
 var temp_slice:  fixed[] = temps
 
-// ── Helper ──────────────────────────────────────────────────────────────────
+// ── Data array and slice ─────────────────────────────────────────────────────
+
+data Point
+    x: int
+    y: int
+
+var pts:       Point[4]
+var pts_slice: Point[] = pts
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 fun print_int_array(list: int[])
     for v in list
@@ -31,6 +40,9 @@ fun print_fixed_array(list: fixed[])
     print_str("   size: ")
     print_int(list.size())
     print_str("\n")
+
+fun print_pt(p: Point)
+    print_str("(") print_int(p.x) print_str(",") print_int(p.y) print_str(")")
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
@@ -105,5 +117,30 @@ fun on_start()
     print_bool(flags[0]) print_str(" ")
     print_bool(flags[1]) print_str(" ")
     print_bool(flags[2]) print_str("\n")
+
+    // ── data array ──────────────────────────────────────────────────────────
+
+    pts[0].x = 1   pts[0].y = 10
+    pts[1].x = 2   pts[1].y = 20
+    pts[2].x = 3   pts[2].y = 30
+    pts[3].x = 4   pts[3].y = 40
+
+    print_str("\ndata array:\n")
+    for j in 0..4
+        print_str("  pts[") print_int(j) print_str("]: ")
+        print_pt(pts[j]) print_str("\n")
+
+    // ── data slice ──────────────────────────────────────────────────────────
+
+    print_str("\ndata slice:\n")
+    print_str("  via slice[1]: ") print_pt(pts_slice[1]) print_str("\n")
+
+    // modify via slice, see change through array
+    pts_slice[3].x = 99
+    print_str("  slice[3].x=99: ") print_int(pts[3].x) print_str("\n")
+
+    // modify via array, see change through slice
+    pts[0].y = 77
+    print_str("  pts[0].y=77:   ") print_int(pts_slice[0].y) print_str("\n")
 
     exit()
