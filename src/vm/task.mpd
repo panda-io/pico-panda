@@ -37,7 +37,7 @@ class Task()
         sleep  = 0
         active = true
         error  = VmError.NONE
-        for i: i32 in range(0, REGISTER_SIZE)
+        for i in 0..REGISTER_SIZE
             regs[i] = 0
 
     @inline
