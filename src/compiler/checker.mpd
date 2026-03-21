@@ -263,6 +263,8 @@ class Checker()
             val ptype: i32 = _resolve_type(ptype_raw)
             if _types.is_named(ptype) && _types.category(ptype) == i32(TypeCategory.DATA)
                 _error("data type must be passed by reference (&)")
+            else if ptype >= TYPE_ARRAY_BASE && ptype < TYPE_SLICE_BASE
+                _error("fixed array cannot be a parameter — use a slice (T[]) instead")
             _syms.define_param_named(pname_si, _scan.str_get(pname_si), ptype)
             j++
         val body: i32 = _decls.d3(di)
@@ -497,9 +499,10 @@ class Checker()
         return t
 
     fun _check_call(h: i32) i32
-        val name_si: i32   = _nodes.d0(h)
+        val name_si: i32    = _nodes.d0(h)
         val args_start: i32 = _nodes.d1(h)
         val args_count: i32 = _nodes.d2(h)
+        // Check each arg expression first
         var j: i32 = 0
         while j < args_count
             _check_expr(_nodes.child_get(args_start + j))
@@ -513,6 +516,24 @@ class Checker()
         if gkind != i32(SymbolKind.FUN)
             _error("not a function")
             return TYPE_NONE
+        // Validate argument types against parameter types
+        val di: i32 = _syms.global_slot(gi)
+        val ps: i32 = _decls.d1(di)
+        val pc: i32 = _decls.d2(di)
+        if args_count == pc
+            var k: i32 = 0
+            while k < pc
+                val at: i32 = expr_type(_nodes.child_get(args_start + k))
+                val pt_raw: i32 = _nodes.child_get(ps + k * 2 + 1)
+                val pt: i32 = _resolve_type(pt_raw)
+                if at != TYPE_NONE && pt != TYPE_NONE && at != pt
+                    // Allow array→slice coercion when element types match
+                    val coerce_slice: bool = pt >= TYPE_SLICE_BASE && at >= TYPE_ARRAY_BASE && at < TYPE_SLICE_BASE && (pt - TYPE_SLICE_BASE) == (at - TYPE_ARRAY_BASE)
+                    // Allow int literal (int) assigned to fixed param
+                    val coerce_fixed: bool = pt == TYPE_FIXED && at == TYPE_INT
+                    if !coerce_slice && !coerce_fixed
+                        _error("argument type mismatch")
+                k++
         return _syms.global_type(gi)
 
     fun _check_index(h: i32) i32

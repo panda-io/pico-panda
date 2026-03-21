@@ -979,8 +979,15 @@ class Parser()
                     val field_si: i32 = _val()
                     val fl: i32 = _line()
                     _advance()
-                    _nodes.set_line(fl)
-                    base = _nodes.expr_field(base, field_si)
+                    // Special: expr.size() → SLICE_LEN node
+                    if equals(_scan.str_get(field_si), "size") && _kind() == i32(TokenKind.LPAREN)
+                        _advance()  // (
+                        _expect(i32(TokenKind.RPAREN))
+                        _nodes.set_line(fl)
+                        base = _nodes.expr_slice_len(base)
+                    else
+                        _nodes.set_line(fl)
+                        base = _nodes.expr_field(base, field_si)
                 else
                     _error("expected field name")
                     break

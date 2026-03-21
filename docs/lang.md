@@ -353,7 +353,7 @@ Half-open range `lo..hi` (lo inclusive, hi exclusive):
 for i in 0..10
     process(i)
 
-for i in 0..buf.len
+for i in 0..buf.size()
     buf[i] = 0
 ```
 
@@ -364,9 +364,6 @@ Iterate over a fixed array or slice. Optionally capture the index:
 ```pico-panda
 for item in nums
     total = total + item
-
-for i, item in nums
-    buf[i] = item * 2
 ```
 
 `break` and `continue` work inside all loop forms.

@@ -1,0 +1,109 @@
+// ── 4_array_slice: Arrays and slices ────────────────────────────────────────
+
+// ── Global arrays ───────────────────────────────────────────────────────────
+
+var scores: int[5]
+var temps:  fixed[4]
+var flags:  bool[3]
+
+// ── Slice views ─────────────────────────────────────────────────────────────
+// A slice is a packed dword: (count<<16 | addr).
+// Assigning an array name to a slice captures its address —
+// reads and writes through the slice see the same memory as the array.
+
+var score_slice: int[]   = scores
+var temp_slice:  fixed[] = temps
+
+// ── Helper ──────────────────────────────────────────────────────────────────
+
+fun print_int_array(list: int[])
+    for v in list
+        console_print_int(v)
+        console_print_str(" ")
+    console_print_str("   size: ")
+    console_print_int(list.size())
+    console_print_str("\n")
+
+fun print_fixed_array(list: fixed[])
+    for v in list
+        console_print_fixed(v)
+        console_print_str(" ")
+    console_print_str("   size: ")
+    console_print_int(list.size())
+    console_print_str("\n")
+
+// ── Main ────────────────────────────────────────────────────────────────────
+
+@signal(SIGNAL_SYS_START)
+fun on_start()
+
+    // ── int[]: init ─────────────────────────────────────────────────────────
+
+    scores[0] = 10
+    scores[1] = 20
+    scores[2] = 30
+    scores[3] = 40
+    scores[4] = 50
+
+    console_print_str("scores:        ")
+    print_int_array(score_slice)
+
+    // ── Modify via array; slice sees the change ──────────────────────────────
+
+    scores[2] = 99
+
+    console_print_str("scores[2]=99:  ")
+    print_int_array(score_slice)
+
+    // ── Modify via slice; array sees the change ──────────────────────────────
+
+    score_slice[4] = 77
+
+    console_print_str("slice[4]=77:   ")
+    print_int_array(score_slice)
+    console_print_str("array check:   ") console_print_int(scores[4]) console_print_str("\n")
+
+    // ── Accumulate through slice ─────────────────────────────────────────────
+
+    var total: int = 0
+    var i: int = 0
+    while i < 5
+        total = total + score_slice[i]
+        i = i + 1
+
+    console_print_str("sum:           ") console_print_int(total) console_print_str("\n")
+
+    // ── fixed[] ─────────────────────────────────────────────────────────────
+
+    temps[0] = 36.5
+    temps[1] = 37.0
+    temps[2] = 38.25
+    temps[3] = 36.75
+
+    console_print_str("\ntemps:         ")
+    print_fixed_array(temp_slice)
+
+    temps[1] = 40.0
+
+    console_print_str("temps[1]=40.0: ")
+    print_fixed_array(temp_slice)
+
+    // ── bool[] ──────────────────────────────────────────────────────────────
+
+    flags[0] = true
+    flags[1] = false
+    flags[2] = true
+
+    console_print_str("\nflags:         ")
+    console_print_bool(flags[0]) console_print_str(" ")
+    console_print_bool(flags[1]) console_print_str(" ")
+    console_print_bool(flags[2]) console_print_str("\n")
+
+    flags[1] = true
+
+    console_print_str("flags[1]=true: ")
+    console_print_bool(flags[0]) console_print_str(" ")
+    console_print_bool(flags[1]) console_print_str(" ")
+    console_print_bool(flags[2]) console_print_str("\n")
+
+    exit()
