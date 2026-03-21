@@ -81,6 +81,12 @@ class TypeTable()
         _field_values.push(value)
         _field_count.set(u32(idx), _field_count.get(u32(idx)) + 1)
 
+    fun is_named(type_id: i32) bool
+        if type_id < 4
+            return false
+        val idx: u32 = u32(type_id - 4)
+        return idx < _categories.size()
+
     fun category(type_id: i32) i32
         if type_id < 4
             return i32(TypeCategory.PRIM)

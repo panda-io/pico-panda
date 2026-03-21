@@ -240,6 +240,7 @@ class Checker()
     fun _check_fun(di: i32)
         if _decls.ann_kind(di) == 4
             return  // @asm functions have no body to check
+        _cur_line = _decls.line(di)
         _cur_ret  = _resolve_type(_decls.ret(di))
         _in_loop  = 0
         _syms.push_frame()
@@ -250,6 +251,8 @@ class Checker()
             val pname_si: i32 = _nodes.child_get(params_start + j * 2)
             val ptype_raw: i32 = _nodes.child_get(params_start + j * 2 + 1)
             val ptype: i32 = _resolve_type(ptype_raw)
+            if _types.is_named(ptype) && _types.category(ptype) == i32(TypeCategory.DATA)
+                _error("data type must be passed by reference (&)")
             _syms.define_param_named(pname_si, _scan.str_get(pname_si), ptype)
             j++
         val body: i32 = _decls.d3(di)
