@@ -322,6 +322,9 @@ class Checker()
         val init: i32     = _nodes.d2(h)
         val is_val: i32   = _nodes.d3(h)
         var type_id: i32  = _resolve_type(type_raw)
+        if _types.is_named(type_id) && _types.category(type_id) == i32(TypeCategory.DATA)
+            _error("data type cannot be declared on the stack — use a global var or pass by reference (&)")
+            return
         if init != -1
             val init_t: i32 = _check_expr(init)
             if type_id == TYPE_NONE
