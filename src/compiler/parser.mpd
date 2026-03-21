@@ -291,7 +291,7 @@ class Parser()
             return _parse_data_decl()
         if k == i32(TokenKind.KW_ENUM)
             return _parse_enum_decl()
-        if k == i32(TokenKind.KW_VAR) || k == i32(TokenKind.KW_VAL)
+        if k == i32(TokenKind.KW_VAR)
             return _parse_global_var()
         if k == i32(TokenKind.KW_CONST)
             return _parse_global_const()
@@ -499,9 +499,6 @@ class Parser()
         return true
 
     fun _parse_global_var() bool
-        var is_val: i32 = 0
-        if _kind() == i32(TokenKind.KW_VAL)
-            is_val = 1
         _advance()
         if _kind() != i32(TokenKind.IDENT)
             _error("expected variable name")
@@ -521,7 +518,7 @@ class Parser()
             _advance()
             init_e = _parse_expr()
         _consume_newline()
-        _decls.add(i32(DeclKind.GLOBAL_VAR), name_si, type_id, init_e, is_val, _last_array_dim, var_line)
+        _decls.add(i32(DeclKind.GLOBAL_VAR), name_si, type_id, init_e, 0, _last_array_dim, var_line)
         return true
 
     fun _parse_global_const() bool
@@ -585,7 +582,7 @@ class Parser()
 
     fun _parse_stmt() i32
         val k: i32 = _kind()
-        if k == i32(TokenKind.KW_VAR) || k == i32(TokenKind.KW_VAL)
+        if k == i32(TokenKind.KW_VAR)
             return _parse_local_var()
         if k == i32(TokenKind.KW_CONST)
             return _parse_local_const()
@@ -633,9 +630,6 @@ class Parser()
 
     fun _parse_local_var() i32
         val var_line: i32 = _line()
-        var is_val: i32 = 0
-        if _kind() == i32(TokenKind.KW_VAL)
-            is_val = 1
         _advance()
         if _kind() != i32(TokenKind.IDENT)
             _error("expected variable name")
@@ -655,7 +649,7 @@ class Parser()
             init_e = _parse_expr()
         _consume_newline()
         _nodes.set_line(var_line)
-        return _nodes.stmt_var(name_si, type_id, init_e, is_val)
+        return _nodes.stmt_var(name_si, type_id, init_e, 0)
 
     fun _parse_local_const() i32
         val const_line: i32 = _line()

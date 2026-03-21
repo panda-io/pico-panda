@@ -42,8 +42,7 @@ No implicit conversions between types. Use explicit casts: `int(x)`, `fixed(x)`.
 ## Variables
 
 ```pico-panda
-var score: int = 0          // mutable
-val gravity: fixed = 9.8    // immutable binding — cannot be reassigned
+var score: int = 0          // variable
 const MAX_HP: int = 100     // compile-time constant
 ```
 
@@ -51,11 +50,8 @@ Type inference with `:=`:
 
 ```pico-panda
 var x := 42         // inferred: int
-val g := 9.8        // inferred: fixed
+var g := 9.8        // inferred: fixed
 ```
-
-`val` prevents *rebinding* only — it does not affect mutability of pointed-to data.
-See [References](#references).
 
 ---
 
@@ -106,7 +102,7 @@ Element access:
 
 ```pico-panda
 buf[0] = 72
-val c: byte = buf[i]
+var \1: byte = buf[i]
 nums[i] = nums[i] + 1
 ```
 
@@ -132,21 +128,21 @@ variable is just an `int`.
 
 ```pico-panda
 var buf: byte[256]
-val s: byte[] = {&buf, 64}      // ptr = address of buf, len = 64
+var \1: byte[] = {&buf, 64}      // ptr = address of buf, len = 64
 ```
 
 **`.len`** — extract the length (high 16 bits):
 
 ```pico-panda
-val n: int = s.len              // n = 64
+var \1: int = s.len              // n = 64
 ```
 
 **Indexing** — extract ptr (low 16 bits), add element offset, load/store:
 
 ```pico-panda
-val c: byte  = s[i]             // byte[]:  ptr + i
-val x: int   = ns[i]            // int[]:   ptr + i*4
-val f: fixed = fs[i]            // fixed[]: ptr + i*4
+var \1: byte  = s[i]             // byte[]:  ptr + i
+var \1: int   = ns[i]            // int[]:   ptr + i*4
+var \1: fixed = fs[i]            // fixed[]: ptr + i*4
 s[i] = 42
 ```
 
@@ -243,13 +239,11 @@ fun find(): Sprite          // ERROR: by-value not allowed
 
 ```pico-panda
 var pos: Vec2
-val r: &Vec2 = &pos
+var r: &Vec2 = &pos
 
 r.x = 1.5               // OK — mutate through reference
-r = &other_pos          // ERROR: val binding cannot be rebound
+r = &other_pos          // OK — rebind to another Vec2
 ```
-
-`var r: &Vec2` allows rebinding. `val r: &Vec2` prevents it.
 
 Reference fields in `data` are not automatically initialized — assign them before use.
 
@@ -440,9 +434,9 @@ Only one arm fires. Arms are checked top-to-bottom; the first match wins.
 No implicit conversions. Use explicit cast syntax:
 
 ```pico-panda
-val f: fixed = fixed(score)     // int → fixed (shift left 16)
-val i: int   = int(gravity)     // fixed → int (shift right 16, truncates)
-val b: byte  = byte(flags)      // int → byte (low 8 bits)
+var \1: fixed = fixed(score)     // int → fixed (shift left 16)
+var \1: int   = int(gravity)     // fixed → int (shift right 16, truncates)
+var \1: byte  = byte(flags)      // int → byte (low 8 bits)
 ```
 
 ---
@@ -466,7 +460,7 @@ val b: byte  = byte(flags)      // int → byte (low 8 bits)
 
 ## Relation to Micro Panda
 
-Pico Panda shares syntax conventions with Micro Panda (`var`/`val`/`const`, `fun`,
+Pico Panda shares syntax conventions with Micro Panda (`var`/`const`, `fun`,
 `@signal`, `&T` references, `T[]` slices, explicit casts) but is a separate, smaller
 language that compiles to bytecode rather than C.
 

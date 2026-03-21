@@ -2,8 +2,8 @@
 // Symbol table for the Pico-Panda compiler.
 //
 // Symbols are split into two scopes:
-//   Global scope  — var/val/const/fun/data/enum declarations at top level
-//   Local scope   — parameters + local var/val/const inside a function
+//   Global scope  — var/const/fun/data/enum declarations at top level
+//   Local scope   — parameters + local var/const inside a function
 //
 // The local scope is a stack of frames (push_frame / pop_frame).
 // Local symbols shadow global ones.
@@ -15,7 +15,6 @@
 //              for globals: data-segment address (assigned by GlobalLayout)
 //              for funs: declaration index (into the DeclPool)
 //              for consts: literal value (int) or -1 (needs codegen inline)
-//   is_val   — true if binding is immutable (val/const)
 
 #if HOSTED
 import hosted.memory::HeapAllocator
@@ -23,8 +22,7 @@ import hosted.collection::HeapList
 import hosted.collection::HeapMap
 
 enum SymbolKind
-    VAR         = 0   // mutable variable
-    VAL         = 1   // immutable binding
+    VAR         = 0   // variable
     CONST       = 2   // compile-time constant
     FUN         = 3   // function
     DATA_TYPE   = 4   // data struct name
@@ -38,7 +36,6 @@ class SymbolTable()
     var _g_kinds:       HeapList<i32>
     var _g_types:       HeapList<i32>
     var _g_slots:       HeapList<i32>
-    var _g_vals:        HeapList<i32>   // 1 = immutable
 
     // ── Local scope stack ─────────────────────────────────────────────────
     // Each frame is [start, count] in the flat local lists.
@@ -48,7 +45,6 @@ class SymbolTable()
     var _l_kinds:       HeapList<i32>
     var _l_types:       HeapList<i32>
     var _l_slots:       HeapList<i32>
-    var _l_vals:        HeapList<i32>
 
     var _next_param_slot: i32 = 0
     var _next_var_slot:   i32 = 0
@@ -62,14 +58,12 @@ class SymbolTable()
         _g_kinds.init(heap)
         _g_types.init(heap)
         _g_slots.init(heap)
-        _g_vals.init(heap)
         _l_frame_start.init(heap)
         _l_frame_count.init(heap)
         _l_names.init(heap)
         _l_kinds.init(heap)
         _l_types.init(heap)
         _l_slots.init(heap)
-        _l_vals.init(heap)
 
     // ── Global scope ──────────────────────────────────────────────────────
 
@@ -82,7 +76,6 @@ class SymbolTable()
         _g_kinds.push(kind)
         _g_types.push(type_id)
         _g_slots.push(slot)
-        _g_vals.push(is_val)
 
     // ── Local scope ───────────────────────────────────────────────────────
 
@@ -102,7 +95,6 @@ class SymbolTable()
             _l_kinds.pop()
             _l_types.pop()
             _l_slots.pop()
-            _l_vals.pop()
             i++
         _l_frame_start.pop()
         _l_frame_count.pop()
@@ -110,13 +102,13 @@ class SymbolTable()
     fun define_param(name: u8[], type_id: i32)
         val slot: i32 = _next_param_slot++
         _param_count    = _next_param_slot
-        _define_local(name, i32(SymbolKind.VAR), type_id, slot, 0)
+        _define_local(name, i32(SymbolKind.VAR), type_id, slot)
 
     fun define_local(name: u8[], kind: i32, type_id: i32, is_val: i32)
         val slot: i32 = _param_count + _next_var_slot++
-        _define_local(name, kind, type_id, slot, is_val)
+        _define_local(name, kind, type_id, slot)
 
-    fun _define_local(name: u8[], kind: i32, type_id: i32, slot: i32, is_val: i32)
+    fun _define_local(name: u8[], kind: i32, type_id: i32, slot: i32)
         if _l_frame_start.is_empty()
             return
         val fi: i32 = i32(_l_frame_start.size()) - 1
@@ -125,13 +117,8 @@ class SymbolTable()
         _l_kinds.push(kind)
         _l_types.push(type_id)
         _l_slots.push(slot)
-        _l_vals.push(is_val)
-        // Store the name in a separate structure for lookup:
-        // We repurpose _l_names as the string index of the name.
         val li: i32 = i32(_l_names.size()) - 1
-        // We'll store the actual string-index by scanning from frame start.
-        // This is a simple linear scan on lookup — fine for small functions.
-        _l_names.set(u32(li), 0)   // overwrite placeholder; real name stored below
+        _l_names.set(u32(li), 0)
 
     // We need a name → slot lookup that works without a per-frame map.
     // Store: all locals across all frames in _l_names as plain string indices.
@@ -146,7 +133,6 @@ class SymbolTable()
         _l_kinds.push(kind)
         _l_types.push(type_id)
         _l_slots.push(slot)
-        _l_vals.push(is_val)
 
     fun define_param_named(name_si: i32, name: u8[], type_id: i32)
         if _l_frame_start.is_empty()
@@ -159,7 +145,6 @@ class SymbolTable()
         _l_kinds.push(i32(SymbolKind.VAR))
         _l_types.push(type_id)
         _l_slots.push(slot)
-        _l_vals.push(0)
 
     // ── Lookup ────────────────────────────────────────────────────────────
     // lookup_local / lookup_global return a list index (>=0) on success, -1 if not found.
@@ -182,9 +167,6 @@ class SymbolTable()
     fun local_slot(li: i32) i32
         return _l_slots.get(u32(li))
 
-    fun local_val(li: i32) i32
-        return _l_vals.get(u32(li))
-
     fun lookup_global(name: u8[]) i32
         if !_g_names.contains(name)
             return -1
@@ -198,9 +180,6 @@ class SymbolTable()
 
     fun global_slot(gi: i32) i32
         return _g_slots.get(u32(gi))
-
-    fun global_val(gi: i32) i32
-        return _g_vals.get(u32(gi))
 
     fun in_local_scope() bool
         return !_l_frame_start.is_empty()

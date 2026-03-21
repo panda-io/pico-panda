@@ -302,7 +302,7 @@ fun test_e2e_add()
 
 @test
 fun test_checker_type_mismatch()
-    assert(!pp_compile("fun f()\n    val a: int = 1\n    val b: fixed = 1.5\n    val c: int = a + b\n"))
+    assert(!pp_compile("fun f()\n    var a: int = 1\n    var b: fixed = 1.5\n    var c: int = a + b\n"))
 
 @test
 fun test_compile_data_type()

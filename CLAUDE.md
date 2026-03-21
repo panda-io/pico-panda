@@ -124,7 +124,7 @@ shared opcode dispatch. Returns updated `h_count`. `_sys_execute(t)` and `_app_e
 slim wrappers that build a handler slice from the fixed array:
 
 ```micro-panda
-val hs: Handler[] = {&_sys_handlers[0], u32(SYS_MAX_HANDLERS)}
+var hs: Handler[] = {&_sys_handlers[0], u32(SYS_MAX_HANDLERS)}
 _sys_h_count = _run_execute(task, _sys_code, hs, _sys_h_count)
 ```
 

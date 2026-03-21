@@ -187,8 +187,6 @@ class Scanner()
     fun _keyword_kind(s: u8[]) i32
         if equals(s, "var")
             return i32(TokenKind.KW_VAR)
-        if equals(s, "val")
-            return i32(TokenKind.KW_VAL)
         if equals(s, "const")
             return i32(TokenKind.KW_CONST)
         if equals(s, "fun")

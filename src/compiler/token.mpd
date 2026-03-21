@@ -12,7 +12,6 @@ enum TokenKind
     IDENT       = 5
     // ── Keywords ──────────────────────────────────────────────────────────────
     KW_VAR      = 10
-    KW_VAL      = 11
     KW_CONST    = 12
     KW_FUN      = 13
     KW_DATA     = 14

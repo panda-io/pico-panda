@@ -28,10 +28,10 @@ fun on_start()
 
     // ── Primitive types ────────────────────────────────────────────────────
 
-    val i: int   = -7
-    val f: fixed = 1.5
-    val b: bool  = true
-    val s: string = "pico-panda"
+    var i: int   = -7
+    var f: fixed = 1.5
+    var b: bool  = true
+    var s: string = "pico-panda"
 
     console_print_str("int:    ") console_print_int(i)   console_print_str("\n")
     console_print_str("fixed:  ") console_print_fixed(f) console_print_str("\n")
@@ -41,11 +41,11 @@ fun on_start()
     // ── Type conversions ───────────────────────────────────────────────────
 
     // int literal assigned to fixed (implicit — uses INT_TO_FIXED)
-    val coerced: fixed = 3
+    var coerced: fixed = 3
 
     // explicit casts
-    val to_int:   int   = int(2.75)    // truncates → 2
-    val to_fixed: fixed = fixed(10)    // exact    → 10.000000
+    var to_int:   int   = int(2.75)    // truncates → 2
+    var to_fixed: fixed = fixed(10)    // exact    → 10.000000
 
     console_print_str("\n")
     console_print_str("int literal as fixed: ") console_print_fixed(coerced)  console_print_str("\n")
