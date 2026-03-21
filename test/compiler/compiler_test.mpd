@@ -470,4 +470,19 @@ fun on_tick()
 """
     assert(c.compile(src))
     assert(_find_str(c.asm_output(), "DROP") >= 0)
+
+@test
+fun test_module_dot_call()
+    // gpio.digital_write(1, 0) → compiles as gpio_digital_write(1, 0)
+    assert(pp_compile("""
+fun gpio_digital_write(pin: int, val: int)
+    asm("LOAD_LOCAL pin")
+    asm("STORE_REG 0")
+    asm("LOAD_LOCAL val")
+    asm("STORE_REG 1")
+    asm("CALL_MODULE GPIO DIGITAL_WRITE")
+@signal(1)
+fun on_start()
+    gpio.digital_write(2, 1)
+"""))
 #end

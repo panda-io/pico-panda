@@ -88,6 +88,39 @@ class Scanner()
         val len := u32(_str_len.get(u32(idx)))
         return {&_str_data[off], len}
 
+    // Intern an arbitrary byte slice (not from _src). Returns string index.
+    fun str_intern_bytes(buf: u8[], len: i32) i32
+        var i: u32 = 1
+        while i < _str_off.size()
+            if _str_len.get(i) == len
+                val off := u32(_str_off.get(i))
+                var found: bool = true
+                var j: i32 = 0
+                while j < len
+                    if _str_data[off + u32(j)] != buf[u32(j)]
+                        found = false
+                        break
+                    j++
+                if found
+                    return i32(i)
+            i++
+        val idx: i32 = i32(_str_off.size())
+        val data_off: i32 = _str_data_size
+        val needed: i32 = _str_data_size + len
+        if needed > i32(_str_data.size())
+            var cap: i32 = i32(_str_data.size()) * 2
+            if cap < needed
+                cap = needed + 256
+            _str_data = _heap.realloc_array<u8>(_str_data, u32(cap))
+        var j: i32 = 0
+        while j < len
+            _str_data[u32(_str_data_size)] = buf[u32(j)]
+            _str_data_size++
+            j++
+        _str_off.push(data_off)
+        _str_len.push(len)
+        return idx
+
     fun error_count() i32
         return _errors
 

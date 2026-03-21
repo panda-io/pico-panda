@@ -951,6 +951,26 @@ class Parser()
             return _nodes.expr_unary(i32(TokenKind.TILDE), e)
         return _parse_postfix()
 
+    // Build "mod_field" from two string indices and intern it.
+    fun _mangle_call(mod_si: i32, field_si: i32) i32
+        val mod_name: u8[]   = _scan.str_get(mod_si)
+        val field_name: u8[] = _scan.str_get(field_si)
+        var buf: u8[128]
+        var blen: i32 = 0
+        var mi: i32 = 0
+        while mi < i32(mod_name.size()) && blen < 127
+            buf[u32(blen)] = mod_name[u32(mi)]
+            blen++
+            mi++
+        buf[u32(blen)] = u8(95)   // '_'
+        blen++
+        var fi: i32 = 0
+        while fi < i32(field_name.size()) && blen < 127
+            buf[u32(blen)] = field_name[u32(fi)]
+            blen++
+            fi++
+        return _scan.str_intern_bytes({&buf[0], u32(blen)}, blen)
+
     fun _parse_postfix() i32
         var base: i32 = _parse_primary()
         while true
@@ -966,6 +986,10 @@ class Parser()
                         _expect(i32(TokenKind.RPAREN))
                         _nodes.set_line(fl)
                         base = _nodes.expr_slice_len(base)
+                    else if _kind() == i32(TokenKind.LPAREN) && _nodes.kind(base) == i32(ExprKind.IDENT)
+                        val mangled_si: i32 = _mangle_call(_nodes.d0(base), field_si)
+                        _nodes.set_line(fl)
+                        base = _nodes.expr_ident(mangled_si)
                     else
                         _nodes.set_line(fl)
                         base = _nodes.expr_field(base, field_si)
