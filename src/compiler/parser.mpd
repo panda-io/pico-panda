@@ -222,13 +222,6 @@ class Parser()
     // Returns TYPE_NONE on failure.
 
     fun _parse_type() i32
-        // &T
-        if _kind() == i32(TokenKind.AMP)
-            _advance()
-            val inner: i32 = _parse_type()
-            if inner == TYPE_NONE
-                return TYPE_NONE
-            return TYPE_REF_BASE + inner
         // T[] or T[N]
         val base: i32 = _parse_base_type()
         if base == TYPE_NONE
@@ -956,12 +949,6 @@ class Parser()
             val e: i32 = _parse_unary()
             _nodes.set_line(ul)
             return _nodes.expr_unary(i32(TokenKind.TILDE), e)
-        if _kind() == i32(TokenKind.AMP)
-            val ul: i32 = _line()
-            _advance()
-            val e: i32 = _parse_unary()
-            _nodes.set_line(ul)
-            return _nodes.expr_ref(e)
         return _parse_postfix()
 
     fun _parse_postfix() i32

@@ -677,8 +677,6 @@ class Codegen()
             _put_str("    LOAD_GLOBAL_IND\n")
         else if k == i32(ExprKind.FIELD)
             _gen_field_expr(h)
-        else if k == i32(ExprKind.REF)
-            _gen_lvalue_addr(_nodes.d0(h))
         else if k == i32(ExprKind.SLICE_LEN)
             // expr.size() — high 16 bits of packed dword (count<<16 | addr)
             _gen_expr(_nodes.d0(h))
@@ -868,7 +866,12 @@ class Codegen()
             return
         var j: i32 = 0
         while j < ac
-            _gen_expr(_nodes.child_get(as_ + j))
+            val arg_h: i32 = _nodes.child_get(as_ + j)
+            val at: i32 = _chk.expr_type(arg_h)
+            if _types.is_named(at) && _types.category(at) == i32(TypeCategory.DATA)
+                _gen_lvalue_addr(arg_h)
+            else
+                _gen_expr(arg_h)
             j++
         _put_str("    CALL ")
         _put_str(_scan.str_get(nsi))

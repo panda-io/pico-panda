@@ -12,9 +12,10 @@ on global state.
 ## Design Principles
 
 - **No classes.** Behavior lives in standalone functions, not objects.
-- **No methods.** `data` types hold fields only. Pass `&data` to functions explicitly.
-- **No copy.** `data` values cannot be assigned to each other. All data is worked on in place via references.
-- **No nested data.** A `data` field can be a primitive or a `&reference`, never another `data` inline. This keeps layouts flat and eliminates implicit copies.
+- **No methods.** `data` types hold fields only. Functions receive data by implicit reference.
+- **No copy.** `data` values cannot be assigned to each other. All data is worked on in place.
+- **No nested data.** A `data` field can be a primitive or a slice, never another `data` inline. This keeps layouts flat and eliminates implicit copies.
+- **No explicit references.** `data` is always global; passing it automatically passes its address. No `&` syntax needed.
 - **Signals, not main.** Entry points are declared with `@signal`. The compiler generates all handler registration automatically.
 - **Static memory.** All limits (tasks, handlers, stack depth) are compile-time constants. No dynamic allocation in v1.
 
@@ -181,8 +182,8 @@ fun sum(data: int[]) int
 
 ## Data
 
-`data` declares a named flat record. Fields must be primitives, references (`&T`),
-or slices (`T[]`). No methods. No nested `data` inline.
+`data` declares a named flat record. Fields must be primitives or slices (`T[]`).
+No methods. No nested `data` inline.
 
 ```pico-panda
 data Vec2
@@ -190,7 +191,6 @@ data Vec2
     y: fixed
 
 data Sprite
-    pos:  &Vec2     // reference — OK
     hp:   int
     name: byte[]    // slice — OK (a dword field)
     // body: Vec2   // ERROR: nested data not allowed
@@ -198,12 +198,11 @@ data Sprite
 
 ### Declaring data variables
 
-`data` variables are zero-initialized by default. Set fields explicitly:
+`data` variables must be global. They are zero-initialized by default. Set fields explicitly:
 
 ```pico-panda
 var player: Sprite
 player.hp   = 100
-player.pos  = &player_pos
 player.name = {&name_buf, 6}
 ```
 
@@ -218,52 +217,26 @@ b = a               // ERROR: cannot copy data
 b.hp = a.hp         // OK — copy a single primitive field explicitly
 ```
 
-### No pass-by-value
+### Pass by implicit reference
 
-`data` types cannot be passed or returned by value. Always use a reference:
-
-```pico-panda
-fun update(s: &Sprite)      // OK
-fun update(s: Sprite)       // ERROR: by-value not allowed
-
-fun find(): &Sprite         // OK — return reference
-fun find(): Sprite          // ERROR: by-value not allowed
-```
-
----
-
-## References
-
-`&T` creates a reference to a variable. You can reference primitives (`int`, `fixed`,
-`bool`, `byte`), `data` types, and `enum` types.
+`data` types are always passed by implicit reference — no `&` syntax needed.
+The compiler automatically passes the address of the global variable:
 
 ```pico-panda
-var pos: Vec2
-var r: &Vec2 = &pos
+fun update(s: Sprite)   // s is implicitly a reference to a global Sprite
+    s.hp = s.hp - 1
 
-r.x = 1.5               // OK — mutate through reference
-r = &other_pos          // OK — rebind to another Vec2
+var g_player: Sprite
+update(g_player)        // compiler passes &g_player automatically
 ```
 
-Reference fields in `data` are not automatically initialized — assign them before use.
-
-### What cannot be referenced
-
-`string`, slices (`T[]`), and fixed arrays (`T[N]`) are already reference-like — they
-carry their own address internally. Taking `&` of them is a compile error:
+`data` types cannot be returned by value or declared on the stack:
 
 ```pico-panda
-var s: string
-var r: &string          // ERROR: cannot take reference to string/array/slice
-
-var buf: byte[64]
-var rr: &byte[64]       // ERROR: cannot take reference to string/array/slice
-
-var sl: int[]
-var rl: &int[]          // ERROR: cannot take reference to string/array/slice
+fun find(): Sprite      // ERROR: data cannot be returned by value
+fun f()
+    var s: Sprite       // ERROR: data cannot be declared on the stack — use a global
 ```
-
-Pass these types directly — they are already cheap to copy (one word each).
 
 ---
 
@@ -272,7 +245,7 @@ Pass these types directly — they are already cheap to copy (one word each).
 Standalone functions only. No methods on `data`.
 
 ```pico-panda
-fun move(s: &Sprite, dx: fixed, dy: fixed)
+fun move(s: Sprite, dx: fixed, dy: fixed)
     s.pos.x = s.pos.x + dx
     s.pos.y = s.pos.y + dy
 
@@ -448,7 +421,7 @@ var \1: byte  = byte(flags)      // int → byte (low 8 bits)
 | `class` with methods | Signals + standalone functions are sufficient; methods complicate signal dispatch |
 | Tagged enums (Rust-style) | No heap; `data` + discriminant field achieves the same goal with flat layout |
 | Nested `data` | Prevents implicit copies; keeps layouts flat |
-| Pass-by-value for `data` | No accidental copies on MCU |
+| Explicit `&` references | `data` is always global; implicit pass-by-reference is simpler and safer |
 | `data[]` arrays | No heap; field-offset math not in VM v1 |
 | Generics | Ultra-light scope; not needed for VM programs |
 | Heap allocation | v1 is static memory only |
@@ -461,8 +434,10 @@ var \1: byte  = byte(flags)      // int → byte (low 8 bits)
 ## Relation to Micro Panda
 
 Pico Panda shares syntax conventions with Micro Panda (`var`/`const`, `fun`,
-`@signal`, `&T` references, `T[]` slices, explicit casts) but is a separate, smaller
-language that compiles to bytecode rather than C.
+`@signal`, `T[]` slices, explicit casts) but is a separate, smaller language
+that compiles to bytecode rather than C. References (`&T`) exist in Micro Panda
+but are absent from Pico Panda — `data` types are always global and passed by
+implicit reference.
 
 Micro Panda is used to **implement** the Pico Panda VM (`vm.mpd`, `task.mpd`).
 Pico Panda programs run **on** that VM.
@@ -473,6 +448,7 @@ Pico Panda programs run **on** that VM.
 | Runs on | MCU / desktop natively | Pico Panda VM |
 | Classes | Yes | No (`data` only) |
 | Generics | Yes | No |
+| References (`&T`) | Yes | No (implicit for `data`) |
 | Slice encoding | fat pointer (ptr + size_t) | packed dword (len:u16 \| ptr:u16) |
 | Heap | Allocator pattern | No (v1) |
 | Signals | Immediate dispatch | Tick-queued dispatch |

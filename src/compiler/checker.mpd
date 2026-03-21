@@ -97,12 +97,6 @@ class Checker()
 
     // Resolve a raw type_id: converts 4000+si placeholders to real TypeTable IDs.
     fun _resolve_type(raw: i32) i32
-        // &NamedType = REF_BASE + (4000+si) → resolve inner first
-        if raw >= TYPE_REF_BASE + 4000 && raw < TYPE_ARRAY_BASE + 4000
-            val inner: i32 = _resolve_type(raw - TYPE_REF_BASE)
-            if inner == TYPE_NONE
-                return TYPE_NONE
-            return TYPE_REF_BASE + inner
         // NamedType[N] = ARRAY_BASE + (4000+si)
         if raw >= TYPE_ARRAY_BASE + 4000 && raw < TYPE_SLICE_BASE + 4000
             val inner: i32 = _resolve_type(raw - TYPE_ARRAY_BASE)
@@ -124,12 +118,6 @@ class Checker()
                 _error("unknown type")
                 return TYPE_NONE
             return id
-        // &T where T is a primitive/string/array/slice (raw in REF range only)
-        if raw >= TYPE_REF_BASE && raw < TYPE_ARRAY_BASE
-            val inner: i32 = raw - TYPE_REF_BASE
-            if _is_wrapped(inner)
-                _error("cannot take reference to string/array/slice")
-                return TYPE_NONE
         return raw
 
     // ── Pass 1a: Register named types ────────────────────────────────────
@@ -256,10 +244,11 @@ class Checker()
         while j < params_count
             val pname_si: i32 = _nodes.child_get(params_start + j * 2)
             val ptype_raw: i32 = _nodes.child_get(params_start + j * 2 + 1)
-            val ptype: i32 = _resolve_type(ptype_raw)
-            if _types.is_named(ptype) && _types.category(ptype) == i32(TypeCategory.DATA)
-                _error("data type must be passed by reference (&)")
-            else if ptype >= TYPE_ARRAY_BASE && ptype < TYPE_SLICE_BASE
+            val ptype_resolved: i32 = _resolve_type(ptype_raw)
+            var ptype: i32 = ptype_resolved
+            if _types.is_named(ptype_resolved) && _types.category(ptype_resolved) == i32(TypeCategory.DATA)
+                ptype = TYPE_REF_BASE + ptype_resolved  // implicit pass-by-reference
+            else if ptype_resolved >= TYPE_ARRAY_BASE && ptype_resolved < TYPE_SLICE_BASE
                 _error("fixed array cannot be a parameter — use a slice (T[]) instead")
             _syms.define_param_named(pname_si, _scan.str_get(pname_si), ptype)
             j++
@@ -318,7 +307,10 @@ class Checker()
         val init: i32     = _nodes.d2(h)
         var type_id: i32  = _resolve_type(type_raw)
         if _types.is_named(type_id) && _types.category(type_id) == i32(TypeCategory.DATA)
-            _error("data type cannot be declared on the stack — use a global var or pass by reference (&)")
+            _error("data type cannot be declared on the stack — use a global var")
+            return
+        if type_id >= TYPE_ARRAY_BASE && type_id < TYPE_SLICE_BASE
+            _error("fixed array cannot be declared on the stack — use a global var")
             return
         if init != -1
             val init_t: i32 = _check_expr(init)
@@ -444,12 +436,6 @@ class Checker()
         else if k == i32(ExprKind.CAST)
             t = _nodes.d0(h)
             _check_expr(_nodes.d1(h))
-        else if k == i32(ExprKind.REF)
-            val inner: i32 = _check_expr(_nodes.d0(h))
-            if _is_wrapped(inner)
-                _error("cannot take reference to string/array/slice")
-            else
-                t = TYPE_REF_BASE + inner
         else if k == i32(ExprKind.SLICE_LIT)
             _check_expr(_nodes.d0(h))
             _check_expr(_nodes.d1(h))
@@ -526,7 +512,9 @@ class Checker()
                     val coerce_slice: bool = pt >= TYPE_SLICE_BASE && at >= TYPE_ARRAY_BASE && at < TYPE_SLICE_BASE && (pt - TYPE_SLICE_BASE) == (at - TYPE_ARRAY_BASE)
                     // Allow int literal (int) assigned to fixed param
                     val coerce_fixed: bool = pt == TYPE_FIXED && at == TYPE_INT
-                    if !coerce_slice && !coerce_fixed
+                    // Allow data type passed implicitly by reference
+                    val coerce_data: bool = pt >= TYPE_REF_BASE && pt < TYPE_ARRAY_BASE && at == pt - TYPE_REF_BASE
+                    if !coerce_slice && !coerce_fixed && !coerce_data
                         _error("argument type mismatch")
                 k++
         return _syms.global_type(gi)

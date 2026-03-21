@@ -1,4 +1,4 @@
-// ── 1_types: Types, casts, and references ──────────────────────────────────
+// ── 1_types: Types, casts, and data ─────────────────────────────────────────
 
 // ── Data type ──────────────────────────────────────────────────────────────
 
@@ -10,14 +10,14 @@ var g_vec: Vec2
 
 // ── Helper functions ───────────────────────────────────────────────────────
 
-fun print_vec(v: &Vec2)
+fun print_vec(v: Vec2)
     console_print_str("Vec2(")
     console_print_int(v.x)
     console_print_str(", ")
     console_print_fixed(v.y)
     console_print_str(")")
 
-fun translate(v: &Vec2, dx: int, dy: fixed)
+fun translate(v: Vec2, dx: int, dy: fixed)
     v.x = v.x + dx
     v.y = v.y + dy
 
@@ -25,6 +25,10 @@ fun translate(v: &Vec2, dx: int, dy: fixed)
 
 @signal(SIGNAL_SYS_START)
 fun on_start()
+
+    var array: int[10]
+    array[0] = 123
+    console_print_int(array[0])
 
     // ── Primitive types ────────────────────────────────────────────────────
 
@@ -52,15 +56,15 @@ fun on_start()
     console_print_str("fixed(2.75) → int:    ") console_print_int(to_int)     console_print_str("\n")
     console_print_str("int(10) → fixed:      ") console_print_fixed(to_fixed) console_print_str("\n")
 
-    // ── Data type + reference ──────────────────────────────────────────────
+    // ── Data type ──────────────────────────────────────────────────────────
 
     g_vec.x = 4
     g_vec.y = 0.5
 
     console_print_str("\n")
-    console_print_str("initial:    ") print_vec(&g_vec) console_print_str("\n")
+    console_print_str("initial:    ") print_vec(g_vec) console_print_str("\n")
 
-    translate(&g_vec, 3, 1.25)
+    translate(g_vec, 3, 1.25)
 
-    console_print_str("after move: ") print_vec(&g_vec) console_print_str("\n")
+    console_print_str("after move: ") print_vec(g_vec) console_print_str("\n")
     exit()
