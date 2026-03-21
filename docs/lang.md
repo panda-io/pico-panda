@@ -22,16 +22,18 @@ on global state.
 
 ## Primitives
 
-| Type    | Size    | Description                                         |
-| :------ | :-----: | :-------------------------------------------------- |
-| `int`   | 4 bytes | 32-bit signed integer                               |
-| `fixed` | 4 bytes | 16.16 fixed-point                                   |
-| `bool`  | 4 bytes | `true` or `false`                                   |
-| `byte`  | 1 byte  | unsigned 8-bit; widened to int on stack             |
+| Type     | Size    | Description                                              |
+| :------- | :-----: | :------------------------------------------------------- |
+| `int`    | 4 bytes | 32-bit signed integer                                    |
+| `fixed`  | 4 bytes | 16.16 fixed-point                                        |
+| `bool`   | 4 bytes | `true` or `false`                                        |
+| `byte`   | 1 byte  | unsigned 8-bit; widened to int on stack                  |
+| `string` | 4 bytes | read-only string constant; packed address+length (1 word)|
 
 `fixed` literals use decimal notation: `1.5`, `-0.25`, `0.0`.
 Integer literals: `42`, `-7`, `0xFF`.
 Boolean literals: `true`, `false`.
+String literals: `"hello"` — stored in the constant pool; passed by value like a slice.
 
 No implicit conversions between types. Use explicit casts: `int(x)`, `fixed(x)`.
 
@@ -236,7 +238,8 @@ fun find(): Sprite          // ERROR: by-value not allowed
 
 ## References
 
-References (`&T`) work the same as in Micro Panda.
+`&T` creates a reference to a variable. You can reference primitives (`int`, `fixed`,
+`bool`, `byte`), `data` types, and `enum` types.
 
 ```pico-panda
 var pos: Vec2
@@ -249,6 +252,24 @@ r = &other_pos          // ERROR: val binding cannot be rebound
 `var r: &Vec2` allows rebinding. `val r: &Vec2` prevents it.
 
 Reference fields in `data` are not automatically initialized — assign them before use.
+
+### What cannot be referenced
+
+`string`, slices (`T[]`), and fixed arrays (`T[N]`) are already reference-like — they
+carry their own address internally. Taking `&` of them is a compile error:
+
+```pico-panda
+var s: string
+var r: &string          // ERROR: cannot take reference to string/array/slice
+
+var buf: byte[64]
+var rr: &byte[64]       // ERROR: cannot take reference to string/array/slice
+
+var sl: int[]
+var rl: &int[]          // ERROR: cannot take reference to string/array/slice
+```
+
+Pass these types directly — they are already cheap to copy (one word each).
 
 ---
 

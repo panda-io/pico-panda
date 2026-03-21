@@ -91,6 +91,10 @@ class Checker()
             _expr_types.push(TYPE_NONE)
         _expr_types.set(u32(h), t)
 
+    // Returns true for types that are already reference-like (string, slice, array).
+    fun _is_wrapped(t: i32) bool
+        return t == TYPE_STRING || t >= TYPE_ARRAY_BASE
+
     // Resolve a raw type_id: converts 4000+si placeholders to real TypeTable IDs.
     fun _resolve_type(raw: i32) i32
         // &NamedType = REF_BASE + (4000+si) → resolve inner first
@@ -120,6 +124,12 @@ class Checker()
                 _error("unknown type")
                 return TYPE_NONE
             return id
+        // &T where T is a primitive/string/array/slice (raw in REF range only)
+        if raw >= TYPE_REF_BASE && raw < TYPE_ARRAY_BASE
+            val inner: i32 = raw - TYPE_REF_BASE
+            if _is_wrapped(inner)
+                _error("cannot take reference to string/array/slice")
+                return TYPE_NONE
         return raw
 
     // ── Pass 1a: Register named types ────────────────────────────────────
@@ -170,6 +180,7 @@ class Checker()
         var i: i32 = 0
         while i < _decls.count()
             val k: i32 = _decls.kind(i)
+            _cur_line = _decls.line(i)
             if k == i32(DeclKind.DATA)
                 val name_si: i32 = _decls.d0(i)
                 val name: u8[] = _scan.str_get(name_si)
@@ -190,11 +201,11 @@ class Checker()
         var i: i32 = 0
         while i < _decls.count()
             val k: i32 = _decls.kind(i)
+            _cur_line = _decls.line(i)
             if k == i32(DeclKind.FUN)
                 val name_si: i32 = _decls.d0(i)
                 val name: u8[] = _scan.str_get(name_si)
                 if _syms.lookup_global(name) >= 0
-                    _cur_line = _decls.line(i)
                     _error("duplicate function")
                     i++
                     continue
@@ -205,7 +216,6 @@ class Checker()
                 val name_si: i32 = _decls.d0(i)
                 val name: u8[] = _scan.str_get(name_si)
                 if _syms.lookup_global(name) >= 0
-                    _cur_line = _decls.line(i)
                     _error("duplicate global variable")
                     i++
                     continue
@@ -315,8 +325,10 @@ class Checker()
             if type_id == TYPE_NONE
                 type_id = init_t
             else if init_t != TYPE_NONE && type_id != init_t
-                val coerce: bool = type_id == TYPE_FIXED && init_t == TYPE_INT
-                if !coerce
+                val coerce_fixed: bool = type_id == TYPE_FIXED && init_t == TYPE_INT
+                // array[N] → slice[] coercion: element types must match
+                val coerce_slice: bool = type_id >= TYPE_SLICE_BASE && init_t >= TYPE_ARRAY_BASE && init_t < TYPE_SLICE_BASE && (type_id - TYPE_SLICE_BASE) == (init_t - TYPE_ARRAY_BASE)
+                if !coerce_fixed && !coerce_slice
                     _error("type mismatch")
         var kind: i32 = i32(SymbolKind.VAR)
         if is_val != 0
@@ -437,7 +449,10 @@ class Checker()
             _check_expr(_nodes.d1(h))
         else if k == i32(ExprKind.REF)
             val inner: i32 = _check_expr(_nodes.d0(h))
-            t = TYPE_REF_BASE + inner
+            if _is_wrapped(inner)
+                _error("cannot take reference to string/array/slice")
+            else
+                t = TYPE_REF_BASE + inner
         else if k == i32(ExprKind.SLICE_LIT)
             _check_expr(_nodes.d0(h))
             _check_expr(_nodes.d1(h))

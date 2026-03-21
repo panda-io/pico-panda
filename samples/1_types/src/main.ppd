@@ -63,5 +63,4 @@ fun on_start()
     translate(&g_vec, 3, 1.25)
 
     console_print_str("after move: ") print_vec(&g_vec) console_print_str("\n")
-
     exit()

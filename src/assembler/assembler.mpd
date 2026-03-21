@@ -383,7 +383,7 @@ class Assembler()
             val dim_str: u8[] = trim(sub(type_str, u32(bracket + 1), u32(close - bracket - 1)))
             val count: i32 = parse_i32(dim_str)
             val base_type: u8[] = trim(sub(type_str, u32(0), u32(bracket)))
-            _array_slices.set(name, (addr << 16) | (count & 0xFFFF))
+            _array_slices.set(name, (count << 16) | (addr & 0xFFFF))
             _data_size = _data_size + count * _base_type_size(base_type)
         else
             _data_size = _data_size + _base_type_size(type_str)

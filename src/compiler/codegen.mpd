@@ -400,11 +400,26 @@ class Codegen()
             _put_str(_scan.str_get(_nodes.d0(h)))
             _put_str("\n")
         else if k == i32(ExprKind.INDEX)
-            _gen_lvalue_addr(_nodes.d0(h))
+            val base: i32 = _nodes.d0(h)
+            val base_t: i32 = _chk.expr_type(base)
+            var elem_t: i32 = TYPE_INT
+            if base_t >= TYPE_SLICE_BASE
+                // Slice variable: load packed dword, extract addr (low 16 bits)
+                _gen_expr(base)
+                _put_str("    PUSH 65535\n")
+                _put_str("    AND\n")
+                elem_t = base_t - TYPE_SLICE_BASE
+            else
+                _gen_lvalue_addr(base)
+                if base_t >= TYPE_ARRAY_BASE
+                    elem_t = base_t - TYPE_ARRAY_BASE
             _gen_expr(_nodes.d1(h))
-            _put_str("    PUSH 4\n")
-            _put_str("    MUL_INT\n")
-            _put_str("    ADD_INT\n")
+            if elem_t == TYPE_BYTE
+                _put_str("    ADD_INT\n")
+            else
+                _put_str("    PUSH 4\n")
+                _put_str("    MUL_INT\n")
+                _put_str("    ADD_INT\n")
         else if k == i32(ExprKind.FIELD)
             _gen_field_addr(_nodes.d0(h), _nodes.d1(h))
 
@@ -566,6 +581,15 @@ class Codegen()
             _put_int(_global_consts.get(name))
             _put_str("\n")
         else
+            // If it's a fixed array used as a value, emit PUSH_SLICE (packed addr+len)
+            val gi: i32 = _chk.syms().lookup_global(name)
+            if gi >= 0
+                val gt: i32 = _chk.syms().global_type(gi)
+                if gt >= TYPE_ARRAY_BASE && gt < TYPE_SLICE_BASE
+                    _put_str("    PUSH_SLICE ")
+                    _put_str(name)
+                    _put_str("\n")
+                    return
             _put_str("    LOAD_GLOBAL ")
             _put_str(name)
             _put_str("\n")
