@@ -157,9 +157,9 @@ class VM()
 
     // ── Tick ─────────────────────────────────────────────────────────────────
 
-    fun tick(delta: fixed)
-        // 0. Sent tick signal
-        emit_signal(SIGNAL_TICK, i32(delta), 0, 0, 0)
+    fun tick(delta_raw: i32)
+        // 0. Send tick signal — delta_raw is the raw 16.16 fixed-point ms value
+        emit_signal(SIGNAL_TICK, delta_raw, 0, 0, 0)
 
         // 1. Wake sleeping tasks
         for task: &Task in _sys_tasks
@@ -648,8 +648,8 @@ fun vm_boot_app()
 fun vm_send(id: i32, param0: i32, param1: i32, param2: i32, param3: i32)
     vm.emit_signal(id, param0, param1, param2, param3)
 
-fun vm_tick(delta: fixed)
-    vm.tick(delta)
+fun vm_tick(delta_raw: i32)
+    vm.tick(delta_raw)
 
 fun vm_exit_requested() bool
     return vm._exit_requested

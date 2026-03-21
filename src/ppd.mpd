@@ -183,7 +183,7 @@ fun _cmd_run(path: u8[], fps: i32)
     vm_boot_sys()
 
     val target_us: i64 = i64(1000000) / i64(fps)
-    val dt: fixed = fixed(65536 / fps)   // 1/fps as 16.16 fixed
+    val dt: i32 = 1000 * 65536 / fps   // raw 16.16 fixed-point ms per tick
     catch_signals()
 
     // Deadline-based loop: advance deadline by target_us each tick so

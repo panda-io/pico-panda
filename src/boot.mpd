@@ -42,7 +42,7 @@ fun exit()
 
 // Delta time in milliseconds (fixed-point) for the current tick.
 // Valid inside any @tick or @interval handler.
+@asm("LOAD_REG 0")
 fun tick_ms() fixed
-    asm("LOAD_REG 0")
 
 """

@@ -322,7 +322,7 @@ fun test_signal_handler()
     vm_reset()
     vm_load_sys({&raw[0], u32(i)})
     vm_boot_sys()
-    vm_tick(1.0)
+    vm_tick(65536)   // 1.0 ms as raw 16.16 fixed
     console.init(_stdout_write)
     assert(equals(_out(), "77"))
 

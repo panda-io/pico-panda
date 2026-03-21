@@ -1,8 +1,11 @@
-var cooldown: int = 10
+var cooldown: int = 8
     
 @tick(10)
 fun on_tick()
+    print_str("cooldown: ")
     print_int(cooldown)
+    print_str("      dt: ")
+    print_fixed(tick_ms())
     print_str("\n")
     cooldown -= 1
     if cooldown <=0

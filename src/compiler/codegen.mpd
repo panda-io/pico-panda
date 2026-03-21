@@ -244,9 +244,13 @@ class Codegen()
             _cur_locals.set(pname, 1)
             j++
         _gen_stmt(body)
-        // Implicit fallback: void functions need RET to return to caller.
-        // Explicit returns and EXIT_HANDLER paths make this unreachable for them.
-        _put_str("    PUSH 0\n    RET\n\n")
+        // Implicit fallback RET. For void functions, push 0 first (caller
+        // always pops a return value via RET). For value-returning functions,
+        // asm-body may have already pushed the result; just RET to return it.
+        // Explicit return/EXIT_HANDLER paths make this unreachable in practice.
+        if _decls.ret(di) == TYPE_NONE
+            _put_str("    PUSH 0\n")
+        _put_str("    RET\n\n")
 
     // Returns false for @asm calls with no return type (they don't push a value).
     fun _expr_pushes_value(h: i32) bool
