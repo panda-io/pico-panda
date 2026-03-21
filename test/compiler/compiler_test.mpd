@@ -187,6 +187,39 @@ fun f()
     var c: int = a + b
 """))
 
+@test
+fun test_const_invalid_string()
+    assert(!pp_compile("""
+const MSG: string = "hello"
+"""))
+
+@test
+fun test_const_invalid_array()
+    assert(!pp_compile("""
+var arr: int[3]
+const C: int[3] = arr
+"""))
+
+@test
+fun test_const_valid_scalars()
+    assert(pp_compile("""
+const A: int   = 10
+const B: fixed = 1.5
+const C: bool  = true
+"""))
+
+@test
+fun test_nested_slice()
+    assert(!pp_compile("""
+var x: int[][]
+"""))
+
+@test
+fun test_nested_array()
+    assert(!pp_compile("""
+var x: int[3][4]
+"""))
+
 // ── asm() statement tests ─────────────────────────────────────────────────────
 
 @test

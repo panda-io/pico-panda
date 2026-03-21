@@ -230,6 +230,9 @@ class Parser()
             _advance()
             if _kind() == i32(TokenKind.RBRACKET)
                 _advance()
+                if _kind() == i32(TokenKind.LBRACKET)
+                    _error("nested array/slice not supported")
+                    return TYPE_NONE
                 return TYPE_SLICE_BASE + base
             // T[N] — consume N (literal or ident), ignore dim for type id
             _last_array_dim = 0
@@ -237,6 +240,9 @@ class Parser()
                 _last_array_dim = _val()
             _advance()  // skip dim
             if !_expect(i32(TokenKind.RBRACKET))
+                return TYPE_NONE
+            if _kind() == i32(TokenKind.LBRACKET)
+                _error("nested array/slice not supported")
                 return TYPE_NONE
             return TYPE_ARRAY_BASE + base
         return base

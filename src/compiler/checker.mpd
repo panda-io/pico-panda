@@ -103,11 +103,17 @@ class Checker()
             val inner: i32 = _resolve_type(raw - TYPE_ARRAY_BASE)
             if inner == TYPE_NONE
                 return TYPE_NONE
+            if inner >= TYPE_ARRAY_BASE
+                _error("nested array/slice not supported")
+                return TYPE_NONE
             return TYPE_ARRAY_BASE + inner
         // NamedType[] = SLICE_BASE + (4000+si)
         if raw >= TYPE_SLICE_BASE + 4000
             val inner: i32 = _resolve_type(raw - TYPE_SLICE_BASE)
             if inner == TYPE_NONE
+                return TYPE_NONE
+            if inner >= TYPE_ARRAY_BASE
+                _error("nested array/slice not supported")
                 return TYPE_NONE
             return TYPE_SLICE_BASE + inner
         // Raw named type from parser: 4000 + string_index
