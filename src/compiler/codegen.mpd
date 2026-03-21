@@ -199,6 +199,20 @@ class Codegen()
         val name:   u8[] = _scan.str_get(nsi)
         val type_id: i32 = _decls.d1(di)
         val dim:    i32 = _decls.ret(di)   // array dim stored in ret slot
+        // Array literal init (int[] = [1,2,3]) → emit as fixed array int[count]
+        if type_id >= TYPE_SLICE_BASE && type_id < TYPE_SLICE_BASE + 500
+            val init_e: i32 = _decls.d2(di)
+            if init_e != -1 && _nodes.kind(init_e) == i32(ExprKind.ARRAY_LIT)
+                val count: i32 = _nodes.d1(init_e)
+                val elem: i32 = type_id - TYPE_SLICE_BASE
+                _put_str(".global ")
+                _put_str(name)
+                _put_str(": ")
+                _put_str(_type_str(elem))
+                _put_str("[")
+                _put_int(count)
+                _put_str("]\n")
+                return
         _put_str(".global ")
         _put_str(name)
         _put_str(": ")
@@ -1116,10 +1130,27 @@ class Codegen()
                 val init_e: i32 = _decls.d2(i)
                 if init_e != -1
                     val name: u8[] = _scan.str_get(_decls.d0(i))
-                    _gen_expr(init_e)
-                    _put_str("    STORE_GLOBAL ")
-                    _put_str(name)
-                    _put_str("\n")
+                    if _nodes.kind(init_e) == i32(ExprKind.ARRAY_LIT)
+                        // Array literal: emit element-by-element stores
+                        val elems_start: i32 = _nodes.d0(init_e)
+                        val count: i32 = _nodes.d1(init_e)
+                        var ei: i32 = 0
+                        while ei < count
+                            _gen_expr(_nodes.child_get(elems_start + ei))
+                            _put_str("    PUSH_ADDR ")
+                            _put_str(name)
+                            _put_str("\n")
+                            _put_str("    PUSH ")
+                            _put_int(ei * 4)
+                            _put_str("\n")
+                            _put_str("    ADD_INT\n")
+                            _put_str("    STORE_GLOBAL_IND\n")
+                            ei++
+                    else
+                        _gen_expr(init_e)
+                        _put_str("    STORE_GLOBAL ")
+                        _put_str(name)
+                        _put_str("\n")
             i++
 
         _gen_signal_registrations()

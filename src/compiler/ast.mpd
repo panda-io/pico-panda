@@ -35,6 +35,7 @@ enum ExprKind
     REF         = 11  // d0=expr  (&expr — take address)
     SLICE_LIT   = 12  // d0=addr_expr, d1=len_expr  ({&buf, n})
     SLICE_LEN   = 13  // d0=base   (base.len — high 16 bits)
+    ARRAY_LIT   = 14  // d0=elems_start, d1=elems_count  ([e1,e2,...] global init)
 
 enum StmtKind
     BLOCK       = 0   // d0=stmts_start, d1=stmts_count
@@ -201,6 +202,9 @@ class NodePool()
 
     fun expr_slice_len(base: i32) i32
         return alloc(i32(ExprKind.SLICE_LEN), base, 0, 0, 0)
+
+    fun expr_array_lit(elems_start: i32, count: i32) i32
+        return alloc(i32(ExprKind.ARRAY_LIT), elems_start, count, 0, 0)
 
     // Convenience: alloc statement nodes
     fun stmt_block(stmts_start: i32, stmts_count: i32) i32

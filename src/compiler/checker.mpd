@@ -215,9 +215,15 @@ class Checker()
                     i++
                     continue
                 val type_raw: i32 = _decls.d1(i)
-                val type_id: i32 = _resolve_type(type_raw)
+                var type_id: i32 = _resolve_type(type_raw)
                 if _decls.d3(i) == 1 && !_is_const_type(type_id)
                     _error("const must be int, fixed, or bool")
+                // Array literal (int[] = [1,2,3]): resolve slice annotation to fixed array type
+                val init_ei: i32 = _decls.d2(i)
+                if init_ei != -1 && _nodes.kind(init_ei) == i32(ExprKind.ARRAY_LIT)
+                    if type_id >= TYPE_SLICE_BASE && type_id < TYPE_SLICE_BASE + 500
+                        _check_expr(init_ei)  // validates element types
+                        type_id = TYPE_ARRAY_BASE + (type_id - TYPE_SLICE_BASE)
                 _syms.define_global(name_si, name, i32(SymbolKind.VAR), type_id, 0, 0)
             else if k == i32(DeclKind.DATA)
                 val name_si: i32 = _decls.d0(i)
@@ -320,6 +326,9 @@ class Checker()
             return
         if type_id >= TYPE_ARRAY_BASE && type_id < TYPE_SLICE_BASE
             _error("fixed array cannot be declared on the stack — use a global var")
+            return
+        if init != -1 && _nodes.kind(init) == i32(ExprKind.ARRAY_LIT)
+            _error("array literal only supported for global vars")
             return
         if init != -1
             val init_t: i32 = _check_expr(init)
@@ -457,6 +466,20 @@ class Checker()
         else if k == i32(ExprKind.SLICE_LEN)
             _check_expr(_nodes.d0(h))
             t = TYPE_INT
+        else if k == i32(ExprKind.ARRAY_LIT)
+            val elems_start: i32 = _nodes.d0(h)
+            val count: i32 = _nodes.d1(h)
+            if count == 0
+                _error("empty array literal")
+            else
+                val first_t: i32 = _check_expr(_nodes.child_get(elems_start))
+                var ei: i32 = 1
+                while ei < count
+                    val et: i32 = _check_expr(_nodes.child_get(elems_start + ei))
+                    if et != TYPE_NONE && first_t != TYPE_NONE && et != first_t
+                        _error("array literal elements must have the same type")
+                    ei++
+                t = TYPE_ARRAY_BASE + first_t
         _set_expr_type(h, t)
         return t
 

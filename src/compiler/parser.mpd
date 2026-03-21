@@ -1114,6 +1114,28 @@ class Parser()
                 return -1
             _nodes.set_line(pl)
             return _nodes.expr_slice_lit(addr_e, len_e)
+        // Array literal: [e1, e2, ...]
+        if k == i32(TokenKind.LBRACKET)
+            val pl: i32 = _line()
+            _advance()
+            var elem_buf: i32[64]
+            var elem_count: i32 = 0
+            while _kind() != i32(TokenKind.RBRACKET) && _kind() != i32(TokenKind.EOF)
+                if elem_count > 0
+                    if !_expect(i32(TokenKind.COMMA))
+                        break
+                val elem: i32 = _parse_expr()
+                if elem_count < 64
+                    elem_buf[elem_count] = elem
+                elem_count++
+            _expect(i32(TokenKind.RBRACKET))
+            val elems_start: i32 = _nodes.children_size()
+            var ei: i32 = 0
+            while ei < elem_count
+                _nodes.child_append(elem_buf[ei])
+                ei++
+            _nodes.set_line(pl)
+            return _nodes.expr_array_lit(elems_start, elem_count)
         // Parenthesised expression
         if k == i32(TokenKind.LPAREN)
             _advance()

@@ -220,6 +220,71 @@ fun test_nested_array()
 var x: int[3][4]
 """))
 
+// ── Array literal tests ───────────────────────────────────────────────────────
+
+@test
+fun test_array_lit_int_compiles()
+    assert(pp_compile("""
+var nums: int[] = [10, 20, 30]
+"""))
+
+@test
+fun test_array_lit_fixed_compiles()
+    assert(pp_compile("""
+var vals: fixed[] = [1.5, 2.5, 3.75]
+"""))
+
+@test
+fun test_array_lit_bool_compiles()
+    assert(pp_compile("""
+var flags: bool[] = [true, false, true]
+"""))
+
+@test
+fun test_array_lit_local_rejected()
+    assert(!pp_compile("""
+@signal(1)
+fun on_start()
+    var x: int[] = [1, 2, 3]
+"""))
+
+@test
+fun test_array_lit_mixed_types_rejected()
+    assert(!pp_compile("""
+var bad: int[] = [1, 2.5, 3]
+"""))
+
+@test
+fun test_e2e_array_lit()
+    // Compile with inline print_int to verify element values at runtime.
+    var c: Compiler
+    val src: u8[] = """
+fun print_int(v: int)
+    asm("LOAD_LOCAL v")
+    asm("CALL_MODULE CONSOLE PRINT_INT")
+var nums: int[] = [10, 20, 30]
+@signal(1)
+fun on_start()
+    print_int(nums[0])
+    print_int(nums[1])
+    print_int(nums[2])
+"""
+    assert(c.compile(src))
+    var asmblr: Assembler
+    asmblr.init()
+    assert(asmblr.pass1_str(c.asm_output()))
+    asmblr.reset_pc()
+    assert(asmblr.pass2_str(c.asm_output()))
+    val bc: u8[] = asmblr.get_bytecode()
+    _out_len = 0
+    console.init(_cap)
+    vm_reset()
+    vm_load_sys(bc)
+    vm_boot_sys()
+    vm_tick(1)
+    console.init(_stdout_write)
+    assert(equals(_out(), "102030"))
+
 // ── asm() statement tests ─────────────────────────────────────────────────────
 
 @test
