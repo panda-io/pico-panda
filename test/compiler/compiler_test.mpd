@@ -571,16 +571,59 @@ fun on_tick()
 
 @test
 fun test_module_dot_call()
-    // gpio.digital_write(1, 0) → compiles as gpio_digital_write(1, 0)
+    // gpio.digital_write(2, 1) → mangled to gpio_digital_write(2, 1) at parse time
     assert(pp_compile("""
-fun gpio_digital_write(pin: int, val: int)
+@module gpio
+fun digital_write(pin: int, val: int)
     asm("LOAD_LOCAL pin")
     asm("STORE_REG 0")
     asm("LOAD_LOCAL val")
     asm("STORE_REG 1")
     asm("CALL_MODULE GPIO DIGITAL_WRITE")
+@module
 @signal(1)
 fun on_start()
     gpio.digital_write(2, 1)
 """))
+
+@test
+fun test_e2e_for_in_data_array()
+    // for pt in pts — loop var is a ref to each element; pt.x / pt.y load via ref.
+    var c: Compiler
+    val src: u8[] = """
+fun print_int(v: int)
+    asm("LOAD_LOCAL v")
+    asm("CALL_MODULE CONSOLE PRINT_INT")
+data Point
+    x: int
+    y: int
+var g_pts: Point[2]
+@signal(1)
+fun on_start()
+    g_pts[0].x = 10
+    g_pts[0].y = 20
+    g_pts[1].x = 30
+    g_pts[1].y = 40
+    for pt in g_pts
+        print_int(pt.x)
+        print_int(pt.y)
+"""
+    assert(c.compile(src))
+    val asm_text: u8[] = c.asm_output()
+
+    var asmblr: Assembler
+    asmblr.init()
+    assert(asmblr.pass1_str(asm_text))
+    asmblr.reset_pc()
+    assert(asmblr.pass2_str(asm_text))
+    val bc: u8[] = asmblr.get_bytecode()
+
+    _out_len = 0
+    console.init(_cap)
+    vm_reset()
+    vm_load_sys(bc)
+    vm_boot_sys()
+    vm_tick(1)
+    console.init(_stdout_write)
+    assert(equals(_out(), "10203040"))
 #end

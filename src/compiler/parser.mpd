@@ -871,6 +871,8 @@ class Parser()
     // Assignment or expression statement: lhs [op=] rhs | expr
     fun _parse_assign_or_expr() i32
         val lhs: i32 = _parse_expr()
+        if lhs < 0
+            return -1
         val k: i32 = _kind()
         val is_assign: bool = k == i32(TokenKind.EQ) || k == i32(TokenKind.PLUS_EQ) || k == i32(TokenKind.MINUS_EQ) || k == i32(TokenKind.STAR_EQ) || k == i32(TokenKind.SLASH_EQ) || k == i32(TokenKind.PERCENT_EQ)
         if is_assign

@@ -444,7 +444,11 @@ class Checker()
             elem_type = iter_type - TYPE_SLICE_BASE
         else if iter_type >= TYPE_ARRAY_BASE
             elem_type = iter_type - TYPE_ARRAY_BASE
-        _syms.define_local_named(var_si, _scan.str_get(var_si), i32(SymbolKind.VAR), elem_type, 0)
+        // Data element: loop var holds the element address (a ref), not a copy
+        var loop_var_type: i32 = elem_type
+        if _types.is_named(elem_type) && _types.category(elem_type) == i32(TypeCategory.DATA)
+            loop_var_type = TYPE_REF_BASE + elem_type
+        _syms.define_local_named(var_si, _scan.str_get(var_si), i32(SymbolKind.VAR), loop_var_type, 0)
         if idx_si != -1
             _syms.define_local_named(idx_si, _scan.str_get(idx_si), i32(SymbolKind.VAR), TYPE_INT, 0)
         _in_loop++

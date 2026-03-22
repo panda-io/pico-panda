@@ -28,6 +28,7 @@ fun max_int(a: int, b: int) int
 
 var g_items: int[4]
 var g_pt: Point
+var g_pts: Point[3]
 
 @signal(SIGNAL_SYS_START)
 fun on_start()
@@ -133,6 +134,17 @@ fun on_start()
     g_pt.x = 42
     g_pt.y = 99
     print_str("pt.x=") print_int(g_pt.x) print_str(" pt.y=") print_int(g_pt.y) print_str("\n")
+
+    print_str("\n")
+
+    // ── for item in data array ────────────────────────────────────────────────
+    print_str("── for item in data array ──\n")
+    g_pts[0].x = 1  g_pts[0].y = 2
+    g_pts[1].x = 3  g_pts[1].y = 4
+    g_pts[2].x = 5  g_pts[2].y = 6
+    for pt in g_pts
+        print_str("(") print_int(pt.x) print_str(",") print_int(pt.y) print_str(") ")
+    print_str("\n")
 
     print_str("\n")
 
