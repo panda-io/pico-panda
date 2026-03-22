@@ -1,4 +1,4 @@
-// ── 3_statements: Supported statement forms ───────────────────────────────────
+// ── 04_statements: Supported statement forms ───────────────────────────────────
 
 data Point
     x: int

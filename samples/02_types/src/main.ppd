@@ -1,10 +1,34 @@
-// ── 1_types: Types, casts, and data ─────────────────────────────────────────
+// ── 02_types: Types, casts, data, and enum ───────────────────────────────────
 
 // ── Constants (compile-time, no RAM) ───────────────────────────────────────
 
 const MAX_SPEED: int   = 100
 const GRAVITY:   fixed = 9.8
 const ACTIVE:    bool  = true
+
+// ── Enum type ──────────────────────────────────────────────────────────────
+
+enum Direction
+    NORTH
+    SOUTH
+    EAST
+    WEST
+
+enum Color
+    RED   = 1
+    GREEN = 2
+    BLUE  = 4
+
+fun direction_name(d: Direction) string
+    match d
+        Direction.NORTH: return "north"
+        Direction.SOUTH: return "south"
+        Direction.EAST:  return "east"
+        Direction.WEST:  return "west"
+        _:               return "?"
+
+fun mix(a: Color, b: Color) int
+    return int(a) | int(b)
 
 // ── Data type ──────────────────────────────────────────────────────────────
 
@@ -62,6 +86,17 @@ fun on_start()
     print_str("int literal as fixed: ") print_fixed(coerced)  print_str("\n")
     print_str("fixed(2.75) → int:    ") print_int(to_int)     print_str("\n")
     print_str("int(10) → fixed:      ") print_fixed(to_fixed) print_str("\n")
+
+    print_str("\n")
+
+    // ── Enum type ──────────────────────────────────────────────────────────
+
+    var dir: Direction = Direction.EAST
+    print_str("dir:           ") print_str(direction_name(dir)) print_str("\n")
+    print_str("dir as int:    ") print_int(int(dir))            print_str("\n")
+
+    var c: Color = Color.RED
+    print_str("RED | BLUE:    ") print_int(mix(c, Color.BLUE))  print_str("\n")
 
     print_str("\n")
 

@@ -1,3 +1,5 @@
+// ── 10_module file name as module name under lib/  ────────────────────────────
+
 @signal(SIGNAL_SYS_START)
 fun on_start()
     gpio.pin_mode(10, gpio.Mode.INPUT)

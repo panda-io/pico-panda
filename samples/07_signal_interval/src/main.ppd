@@ -1,3 +1,5 @@
+// ── 07_signal_interval triggered by every N ms ────────────────────────────
+
 var cooldown: int = 10
 
 @interval(100)

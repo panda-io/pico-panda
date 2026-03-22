@@ -1,3 +1,5 @@
+// ── 08_signal_priority triggered order based on priority ────────────────────────────
+
 @signal(SIGNAL_SYS_START)
 fun on_start_0()
     print_str("start with priority 0\n")
