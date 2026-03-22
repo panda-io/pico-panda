@@ -1,0 +1,46 @@
+// ── 11_asm: Inline assembly ────────────────────────────────────────────────
+
+// @asm("template") — body-less function whose template is inlined at each
+// call site.  {paramname} is replaced with the integer literal argument.
+
+@asm("PUSH {v}")
+fun literal(v: int) int
+
+@asm("LOAD_REG {n}")
+fun reg(n: int) int
+
+// Regular function using asm() statements to emit raw PPasm.
+
+fun abs_val(x: int) int
+    asm("DUP")
+    asm("PUSH 0")
+    asm("CMP_LT_INT")
+    asm("JMP_IF_FALSE _abs_pos")
+    asm("NEG_INT")
+    asm("_abs_pos:")
+    return x
+
+@signal(SIGNAL_SYS_START)
+fun on_start()
+    // @asm call — PUSH 99 inlined, no CALL instruction emitted
+    const n: int = literal(99)
+    print_str("literal(99) = ")
+    print_int(n)
+    print_str("\n")
+
+    // reg() — inlined LOAD_REG 0
+    const r: int = reg(0)
+    print_str("reg(0)      = ")
+    print_int(r)
+    print_str("\n")
+
+    // abs_val uses asm() body statements
+    print_str("abs(-7)     = ")
+    print_int(abs_val(-7))
+    print_str("\n")
+
+    print_str("abs(5)      = ")
+    print_int(abs_val(5))
+    print_str("\n")
+
+    exit()
