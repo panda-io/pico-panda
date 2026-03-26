@@ -597,7 +597,7 @@ fun _console_handler(sub: u8, task: &Task)
         ConsoleCode.PrintInt:
             console.print_i32(task.pop())
         ConsoleCode.PrintFixed:
-            console.print_fixed(task.pop(), u32(6))
+            console.print_fixed(task.pop())
         ConsoleCode.PrintStr:
             val packed: i32 = task.pop()
             val str_addr: i32 = packed & 0xFFFF
