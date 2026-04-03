@@ -322,25 +322,25 @@ class VM()
     // ── Error handling ────────────────────────────────────────────────────────
 
     fun _print_error_msg(code: VmError)
-        console.print_str("[vm] error: ")
+        console.write_string("[vm] error: ")
         match code
             VmError.STACK_OVERFLOW:
-                console.print_str("stack overflow")
+                console.write_string("stack overflow")
             VmError.STACK_UNDERFLOW:
-                console.print_str("stack underflow")
+                console.write_string("stack underflow")
             VmError.FRAME_EXCEEDED:
-                console.print_str("frame exceeded")
+                console.write_string("frame exceeded")
             VmError.BAD_OPCODE:
-                console.print_str("bad opcode")
+                console.write_string("bad opcode")
             VmError.BAD_MODULE:
-                console.print_str("bad module")
+                console.write_string("bad module")
             VmError.SPAWN_FAILED:
-                console.print_str("spawn failed")
+                console.write_string("spawn failed")
             VmError.SIGNAL_FULL:
-                console.print_str("signal queue full")
+                console.write_string("signal queue full")
             _:
-                console.print_str("unknown")
-        console.println()
+                console.write_string("unknown")
+        console.write_byte('\n')
 
     fun _boot_sys_no_err()
         val task: &Task = _spawn_task(0, _sys_tasks)
@@ -593,11 +593,11 @@ var vm: VM
 fun _console_handler(sub: u8, task: &Task)
     match i32(sub)
         ConsoleCode.PrintBool:
-            console.print_bool(task.pop())
+            console.write_bool(task.pop() != 0)
         ConsoleCode.PrintInt:
-            console.print_i32(task.pop())
+            console.write_i32(task.pop())
         ConsoleCode.PrintFixed:
-            console.print_fixed(task.pop())
+            console.write_fixed(task.pop())
         ConsoleCode.PrintStr:
             val packed: i32 = task.pop()
             val str_addr: i32 = packed & 0xFFFF
