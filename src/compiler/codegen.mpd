@@ -53,7 +53,7 @@ class Codegen()
         _decls = decls
         _types = types
         _chk   = chk
-        _out     = heap.allocate_array<u8>(u32(4096))
+        _out     = heap.allocate_array<u8>(4096)
         _out_cap = 4096
         _out_pos = 0
         _label_n = 0
@@ -74,7 +74,7 @@ class Codegen()
         return _errors
 
     fun output() u8[]
-        return {&_out[0], u32(_out_pos)}
+        return {&_out[0], _out_pos}
 
     // ── Output buffer helpers ─────────────────────────────────────────────────
 
@@ -84,7 +84,7 @@ class Codegen()
         var new_cap: i32 = _out_cap * 2
         if new_cap < _out_pos + need
             new_cap = _out_pos + need + 1024
-        _out = _heap.realloc_array<u8>(_out, u32(new_cap))
+        _out = _heap.realloc_array<u8>(_out, new_cap)
         _out_cap = new_cap
 
     fun _put(b: u8)
@@ -1035,24 +1035,24 @@ class Codegen()
             val ak: i32 = _decls.ann_kind(i)
             if ak >= 1 && ak <= 3
                 if idx_count < 32
-                    idx_buf[u32(idx_count)] = i
+                    idx_buf[idx_count] = i
                 idx_count++
             i++
         // Insertion-sort descending by priority (higher first), stable
         var j: i32 = 1
         while j < idx_count
-            val key_di: i32 = idx_buf[u32(j)]
+            val key_di: i32 = idx_buf[j]
             val key_pri: i32 = _decls.ann_priority(key_di)
             var k: i32 = j - 1
-            while k >= 0 && _decls.ann_priority(idx_buf[u32(k)]) < key_pri
-                idx_buf[u32(k + 1)] = idx_buf[u32(k)]
+            while k >= 0 && _decls.ann_priority(idx_buf[k]) < key_pri
+                idx_buf[k + 1] = idx_buf[k]
                 k--
-            idx_buf[u32(k + 1)] = key_di
+            idx_buf[k + 1] = key_di
             j++
         // Emit in sorted order
         j = 0
         while j < idx_count
-            val di: i32 = idx_buf[u32(j)]
+            val di: i32 = idx_buf[j]
             val annk: i32 = _decls.ann_kind(di)
             val fn_name: u8[] = _scan.str_get(_decls.d0(di))
             var sig_id: i32 = 0

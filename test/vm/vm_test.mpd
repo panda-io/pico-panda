@@ -20,7 +20,7 @@ fun _cap(b: u8)
         _out_len++
 
 fun _out() u8[]
-    return {&_out_buf[0], u32(_out_len)}
+    return {&_out_buf[0], _out_len}
 
 @include("stdio.h")
 
@@ -78,13 +78,13 @@ fun _exit_handler(buf: u8[], i: i32) i32
 @test
 fun test_push()
     var raw: u8[16]
-    val code: u8[] = {&raw[0], u32(16)}
+    val code: u8[] = {&raw[0], 16}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 42)
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "42"))
 
 // ── Integer arithmetic ────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ fun test_push()
 @test
 fun test_add_int()
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 10)
@@ -101,13 +101,13 @@ fun test_add_int()
     i = _wb(code, i, u8(OpCode.AddInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "13"))
 
 @test
 fun test_sub_int()
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 10)
@@ -116,13 +116,13 @@ fun test_sub_int()
     i = _wb(code, i, u8(OpCode.SubInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "7"))
 
 @test
 fun test_mul_int()
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 6)
@@ -131,20 +131,20 @@ fun test_mul_int()
     i = _wb(code, i, u8(OpCode.MulInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "42"))
 
 @test
 fun test_neg_int()
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 5)
     i = _wb(code, i, u8(OpCode.NegInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "-5"))
 
 // ── Stack ops ─────────────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ fun test_neg_int()
 @test
 fun test_dup()
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 7)
@@ -160,13 +160,13 @@ fun test_dup()
     i = _wb(code, i, u8(OpCode.AddInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "14"))
 
 @test
 fun test_swap()
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 10)
@@ -176,7 +176,7 @@ fun test_swap()
     i = _wb(code, i, u8(OpCode.SubInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "-7"))
 
 // ── Bitwise ───────────────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ fun test_swap()
 @test
 fun test_bitwise()
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 0xFF)
@@ -193,13 +193,13 @@ fun test_bitwise()
     i = _wb(code, i, u8(OpCode.And))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "15"))
 
 @test
 fun test_shift()
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 1)
@@ -208,7 +208,7 @@ fun test_shift()
     i = _wb(code, i, u8(OpCode.ShlInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "16"))
 
 // ── Comparison + branch ───────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ fun test_shift()
 @test
 fun test_cmp_eq()
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 5)
@@ -225,7 +225,7 @@ fun test_cmp_eq()
     i = _wb(code, i, u8(OpCode.CmpEqInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "1"))
 
 @test
@@ -241,7 +241,7 @@ fun test_jmp_if_false()
     //  24: PRINT_INT       (3 bytes)
     //  27: EXIT            (3 bytes)
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 0)
@@ -255,7 +255,7 @@ fun test_jmp_if_false()
     i = _wi32(code, i, 99)
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "99"))
 
 // ── CALL / RET ────────────────────────────────────────────────────────────────
@@ -270,7 +270,7 @@ fun test_call_ret()
     //  15: PUSH 42          5 bytes
     //  20: RET              1 byte
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 0)
@@ -282,7 +282,7 @@ fun test_call_ret()
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 42)
     i = _wb(code, i, u8(OpCode.Ret))
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "42"))
 
 // ── Signal system ─────────────────────────────────────────────────────
@@ -300,7 +300,7 @@ fun test_signal_handler()
     //  27: SIGNAL EXIT_HANDLER    3 bytes
     // Binary layout: [boot code][handler at offset 19]
     var raw: u8[64]
-    val code: u8[] = {&raw[0], u32(64)}
+    val code: u8[] = {&raw[0], 64}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, SIGNAL_SYS_START)
@@ -320,7 +320,7 @@ fun test_signal_handler()
     _out_len = 0
     console.init(_cap)
     vm_reset()
-    vm_load_sys({&raw[0], u32(i)})
+    vm_load_sys({&raw[0], i})
     vm_boot_sys()
     vm_tick(65536)   // 1.0 ms as raw 16.16 fixed
     console.init(_stdout_write)
@@ -332,26 +332,26 @@ fun test_signal_handler()
 fun test_int_to_fixed()
     // INT_TO_FIXED(3) = 3 << 16 = 196608
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 3)
     i = _wb(code, i, u8(OpCode.IntToFixed))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "196608"))
 
 @test
 fun test_fixed_to_int()
     // FIXED_TO_INT(196608) = 196608 >> 16 = 3
     var raw: u8[32]
-    val code: u8[] = {&raw[0], u32(32)}
+    val code: u8[] = {&raw[0], 32}
     var i: i32 = 0
     i = _wb(code, i, u8(OpCode.Push))
     i = _wi32(code, i, 196608)
     i = _wb(code, i, u8(OpCode.FixedToInt))
     i = _print_int(code, i)
     i = _exit_handler(code, i)
-    _boot({&raw[0], u32(i)})
+    _boot({&raw[0], i})
     assert(equals(_out(), "3"))

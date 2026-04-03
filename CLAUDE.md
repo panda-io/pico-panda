@@ -124,7 +124,7 @@ shared opcode dispatch. Returns updated `h_count`. `_sys_execute(t)` and `_app_e
 slim wrappers that build a handler slice from the fixed array:
 
 ```micro-panda
-var hs: Handler[] = {&_sys_handlers[0], u32(SYS_MAX_HANDLERS)}
+var hs: Handler[] = {&_sys_handlers[0], SYS_MAX_HANDLERS}
 _sys_h_count = _run_execute(task, _sys_code, hs, _sys_h_count)
 ```
 
@@ -168,7 +168,7 @@ vm_tick()                       // one full frame
 - **Named constants as array sizes**: `Task[SYS_MAX_TASKS]` required compiler fixes in
   `parser_types.dart`, `type_array.dart` (`dimNames` list), `generator_type.dart` (`_constInts` map).
 - **Handler slice trick**: fixed arrays can't be passed to functions in Micro Panda — build a
-  `Handler[]` slice with `{&arr[0], u32(MAX)}` and pass that instead.
+  `Handler[]` slice with `{&arr[0], MAX}` and pass that instead.
 - **`h_count` by value + return**: `&i32` can't be dereferenced in Micro Panda, so `_run_execute`
   takes `h_count` by value and returns the updated count.
 - **C struct ordering**: the generator topologically sorts struct definitions so embedded

@@ -72,20 +72,20 @@ class Scanner()
         return _errors == 0
 
     fun token_count() i32
-        return i32(_tokens.size()) / TOK_STRIDE
+        return _tokens.size() / TOK_STRIDE
 
     fun tok_kind(i: i32) i32
-        return _tokens.get(u32(i * TOK_STRIDE))
+        return _tokens.get(i * TOK_STRIDE)
 
     fun tok_line(i: i32) i32
-        return _tokens.get(u32(i * TOK_STRIDE + 1))
+        return _tokens.get(i * TOK_STRIDE + 1)
 
     fun tok_val(i: i32) i32
-        return _tokens.get(u32(i * TOK_STRIDE + 2))
+        return _tokens.get(i * TOK_STRIDE + 2)
 
     fun str_get(idx: i32) u8[]
-        val off := u32(_str_off.get(u32(idx)))
-        val len := u32(_str_len.get(u32(idx)))
+        val off := _str_off.get(idx)
+        val len := _str_len.get(idx)
         return {&_str_data[off], len}
 
     // Intern an arbitrary byte slice (not from _src). Returns string index.
@@ -93,28 +93,28 @@ class Scanner()
         var i: i32 = 1
         while i < _str_off.size()
             if _str_len.get(i) == len
-                val off := u32(_str_off.get(i))
+                val off := _str_off.get(i)
                 var found: bool = true
                 var j: i32 = 0
                 while j < len
-                    if _str_data[off + u32(j)] != buf[u32(j)]
+                    if _str_data[off + j] != buf[j]
                         found = false
                         break
                     j++
                 if found
-                    return i32(i)
+                    return i
             i++
-        val idx: i32 = i32(_str_off.size())
+        val idx: i32 = _str_off.size()
         val data_off: i32 = _str_data_size
         val needed: i32 = _str_data_size + len
-        if needed > i32(_str_data.size())
-            var cap: i32 = i32(_str_data.size()) * 2
+        if needed > _str_data.size()
+            var cap: i32 = _str_data.size() * 2
             if cap < needed
                 cap = needed + 256
-            _str_data = _heap.realloc_array<u8>(_str_data, u32(cap))
+            _str_data = _heap.realloc_array<u8>(_str_data, cap)
         var j: i32 = 0
         while j < len
-            _str_data[u32(_str_data_size)] = buf[u32(j)]
+            _str_data[_str_data_size] = buf[j]
             _str_data_size++
             j++
         _str_off.push(data_off)
@@ -127,17 +127,17 @@ class Scanner()
     // ── Internals ─────────────────────────────────────────────────────────
 
     fun _peek() u8
-        if _pos >= i32(_src.size())
+        if _pos >= _src.size()
             return u8(0)
-        return _src[u32(_pos)]
+        return _src[_pos]
 
     fun _peek2() u8
-        if _pos + 1 >= i32(_src.size())
+        if _pos + 1 >= _src.size()
             return u8(0)
-        return _src[u32(_pos + 1)]
+        return _src[_pos + 1]
 
     fun _advance() u8
-        val c: u8 = _src[u32(_pos)]
+        val c: u8 = _src[_pos]
         _pos++
         if c == u8(10)   // '\n'
             _line++
@@ -183,17 +183,17 @@ class Scanner()
                     return i
             i++
         // New entry — grow _str_data if needed
-        val idx: i32 = i32(_str_off.size())
+        val idx: i32 = _str_off.size()
         val data_off: i32 = _str_data_size
         val needed: i32 = _str_data_size + len
-        if needed > i32(_str_data.size())
-            var cap: i32 = i32(_str_data.size()) * 2
+        if needed > _str_data.size()
+            var cap: i32 = _str_data.size() * 2
             if cap < needed
                 cap = needed + 256
-            _str_data = _heap.realloc_array<u8>(_str_data, u32(cap))
+            _str_data = _heap.realloc_array<u8>(_str_data, cap)
         var j: i32 = 0
         while j < len
-            _str_data[u32(_str_data_size)] = _src[u32(start + j)]
+            _str_data[_str_data_size] = _src[start + j]
             _str_data_size++
             j++
         _str_off.push(data_off)
@@ -203,8 +203,8 @@ class Scanner()
     fun _parse_hex_int(start: i32) i32
         var result: i32 = 0
         var i: i32 = start
-        while i < i32(_src.size()) && _is_hex(_src[u32(i)])
-            val c: u8 = _src[u32(i)]
+        while i < _src.size() && _is_hex(_src[i])
+            val c: u8 = _src[i]
             var digit: i32 = 0
             if c >= u8(97)
                 digit = i32(c) - 87
@@ -295,13 +295,13 @@ class Scanner()
     fun _scan_string(line: i32) bool
         _advance()  // consume opening '"'
         val start: i32 = _pos
-        while _pos < i32(_src.size()) && _src[u32(_pos)] != u8(34)  // '"'
-            if _src[u32(_pos)] == u8(92)   // '\'
+        while _pos < _src.size() && _src[_pos] != u8(34)  // '"'
+            if _src[_pos] == u8(92)   // '\'
                 _pos++
             _pos++
         val len: i32 = _pos - start
         val idx: i32 = _intern(start, len)
-        if _pos < i32(_src.size())
+        if _pos < _src.size()
             _advance()  // consume closing '"'
         _emit(i32(TokenKind.LIT_STR), line, idx)
         return true
@@ -311,7 +311,7 @@ class Scanner()
         while _is_alnum(_peek())
             _advance()
         val len: i32 = _pos - start
-        val s: u8[] = {&_src[u32(start)], u32(len)}
+        val s: u8[] = {&_src[start], len}
         val kw: i32 = _keyword_kind(s)
         if kw == i32(TokenKind.LIT_TRUE)
             _emit(kw, line, 1)
@@ -328,7 +328,7 @@ class Scanner()
     fun _measure_indent() i32
         var col: i32 = 0
         var i: i32 = _pos
-        while i < i32(_src.size()) && _src[u32(i)] == u8(32)  // ' '
+        while i < _src.size() && _src[i] == u8(32)  // ' '
             col++
             i++
         return col
@@ -345,13 +345,13 @@ class Scanner()
 
     // UTF-8 arrow → (0xE2 0x86 0x92)
     fun _is_arrow_utf8() bool
-        if _pos + 2 >= i32(_src.size())
+        if _pos + 2 >= _src.size()
             return false
-        return _src[u32(_pos)] == u8(0xE2) && _src[u32(_pos + 1)] == u8(0x86) && _src[u32(_pos + 2)] == u8(0x92)
+        return _src[_pos] == u8(0xE2) && _src[_pos + 1] == u8(0x86) && _src[_pos + 2] == u8(0x92)
 
     fun _scan_all()
         var at_line_start: bool = true
-        while _pos < i32(_src.size())
+        while _pos < _src.size()
             val line: i32 = _line
             val c: u8 = _peek()
 
@@ -370,7 +370,7 @@ class Scanner()
                 if at_line_start
                     val col: i32 = _measure_indent()
                     // skip the spaces
-                    while _pos < i32(_src.size()) && (_src[u32(_pos)] == u8(32) || _src[u32(_pos)] == u8(9))
+                    while _pos < _src.size() && (_src[_pos] == u8(32) || _src[_pos] == u8(9))
                         _advance()
                     // only update indent level for non-blank lines (blank = spaces/comment only)
                     val nc: u8 = _peek()
@@ -382,7 +382,7 @@ class Scanner()
                     _advance()
                 continue
             if c == u8(47) && _peek2() == u8(47)   // '//'
-                while _pos < i32(_src.size()) && _src[u32(_pos)] != u8(10)
+                while _pos < _src.size() && _src[_pos] != u8(10)
                     _advance()
                 continue
 

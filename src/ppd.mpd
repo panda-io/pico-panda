@@ -39,7 +39,7 @@ fun _count_nl(start: i32, len: i32) i32
     var c: i32 = 0
     var j: i32 = 0
     while j < len
-        if _src_buf[u32(start + j)] == u8(10)
+        if _src_buf[start + j] == u8(10)
             c++
         j++
     return c
@@ -49,10 +49,10 @@ fun _error_loc(line: i32)
     var fi: i32 = 0
     var i: i32 = 1
     while i < _fm_count
-        if _fm_starts[u32(i)] <= line
+        if _fm_starts[i] <= line
             fi = i
         i++
-    val local_line: i32 = line - _fm_starts[u32(fi)] + 1
+    val local_line: i32 = line - _fm_starts[fi] + 1
     if fi == 0
         write_string("<boot>:")
     else
@@ -70,7 +70,7 @@ fun _read_into_src(path: u8[], offset: i32, remaining: i32) i32
         return -1
     val n: i32 = f.read_bytes({&_src_buf[offset], remaining})
     f.close()
-    return i32(n)
+    return n
 
 fun _cmd_compile()
     if !_cfg.load("ppd.cfg")
@@ -105,11 +105,11 @@ fun _cmd_compile()
     var cur_line: i32 = 1
 
     // Prepend boot program (no module context)
-    _fm_starts[u32(0)] = cur_line
+    _fm_starts[0] = cur_line
     _fm_count = 1
     var k: i32 = 0
-    while k < i32(boot_program.size()) && pos + k < buf_end
-        _src_buf[pos + k] = boot_program[u32(k)]
+    while k < boot_program.size() && pos + k < buf_end
+        _src_buf[pos + k] = boot_program[k]
         k++
     pos = pos + k
     _src_buf[pos] = u8(10)
@@ -132,8 +132,8 @@ fun _cmd_compile()
         _src_buf[pos + 7] = u8(32)   // ' '
         pos = pos + 8
         var mi: i32 = 0
-        while mi < i32(lib_nm.size()) && pos < buf_end
-            _src_buf[pos] = lib_nm[u32(mi)]
+        while mi < lib_nm.size() && pos < buf_end
+            _src_buf[pos] = lib_nm[mi]
             pos++
             mi++
         _src_buf[pos] = u8(10)   // '\n'
@@ -141,7 +141,7 @@ fun _cmd_compile()
         cur_line++  // the @module line itself
         // register file map entry (after the marker line)
         if _fm_count < 33
-            _fm_starts[u32(_fm_count)] = cur_line
+            _fm_starts[_fm_count] = cur_line
             _fm_count++
         val file_start: i32 = pos
         n = _read_into_src(_cfg.lib_path(i), pos, buf_end - pos)
@@ -173,7 +173,7 @@ fun _cmd_compile()
     i = 0
     while i < _cfg.src_count()
         if _fm_count < 33
-            _fm_starts[u32(_fm_count)] = cur_line
+            _fm_starts[_fm_count] = cur_line
             _fm_count++
         val file_start: i32 = pos
         n = _read_into_src(_cfg.src(i), pos, buf_end - pos)
@@ -191,7 +191,7 @@ fun _cmd_compile()
 
     // Compile
     _compiler.set_error_loc(_error_loc)
-    val src: u8[] = {&_src_buf[0], u32(pos)}
+    val src: u8[] = {&_src_buf[0], pos}
     if !_compiler.compile(src)
         write_string("compile error (")
         write_i32(_compiler.error_count())

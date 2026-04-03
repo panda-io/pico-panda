@@ -71,7 +71,7 @@ class SymbolTable()
         if _g_names.contains(name)
             _errors++
             return
-        val gi: i32 = i32(_g_kinds.size())
+        val gi: i32 = _g_kinds.size()
         _g_names.set(name, gi)
         _g_kinds.push(kind)
         _g_types.push(type_id)
@@ -80,7 +80,7 @@ class SymbolTable()
     // ── Local scope ───────────────────────────────────────────────────────
 
     fun push_frame()
-        _l_frame_start.push(i32(_l_names.size()))
+        _l_frame_start.push(_l_names.size())
         _l_frame_count.push(0)
         _next_param_slot = 0
         _next_var_slot   = 0
@@ -111,14 +111,14 @@ class SymbolTable()
     fun _define_local(name: u8[], kind: i32, type_id: i32, slot: i32)
         if _l_frame_start.is_empty()
             return
-        val fi: i32 = i32(_l_frame_start.size()) - 1
-        _l_frame_count.set(u32(fi), _l_frame_count.get(u32(fi)) + 1)
+        val fi: i32 = _l_frame_start.size() - 1
+        _l_frame_count.set(fi, _l_frame_count.get(fi) + 1)
         _l_names.push(0)    // placeholder; we use name lookup via linear scan
         _l_kinds.push(kind)
         _l_types.push(type_id)
         _l_slots.push(slot)
-        val li: i32 = i32(_l_names.size()) - 1
-        _l_names.set(u32(li), 0)
+        val li: i32 = _l_names.size() - 1
+        _l_names.set(li, 0)
 
     // We need a name → slot lookup that works without a per-frame map.
     // Store: all locals across all frames in _l_names as plain string indices.
@@ -126,8 +126,8 @@ class SymbolTable()
     fun define_local_named(name_si: i32, name: u8[], kind: i32, type_id: i32, is_val: i32)
         if _l_frame_start.is_empty()
             return
-        val fi: i32 = i32(_l_frame_start.size()) - 1
-        _l_frame_count.set(u32(fi), _l_frame_count.get(u32(fi)) + 1)
+        val fi: i32 = _l_frame_start.size() - 1
+        _l_frame_count.set(fi, _l_frame_count.get(fi) + 1)
         val slot: i32 = _param_count + _next_var_slot++
         _l_names.push(name_si)
         _l_kinds.push(kind)
@@ -137,8 +137,8 @@ class SymbolTable()
     fun define_param_named(name_si: i32, name: u8[], type_id: i32)
         if _l_frame_start.is_empty()
             return
-        val fi: i32 = i32(_l_frame_start.size()) - 1
-        _l_frame_count.set(u32(fi), _l_frame_count.get(u32(fi)) + 1)
+        val fi: i32 = _l_frame_start.size() - 1
+        _l_frame_count.set(fi, _l_frame_count.get(fi) + 1)
         val slot: i32 = _next_param_slot++
         _param_count = _next_param_slot
         _l_names.push(name_si)
@@ -151,21 +151,21 @@ class SymbolTable()
     // Use local_kind/local_type/local_slot/local_val and global_* to read the result.
 
     fun lookup_local(name_si: i32) i32
-        var i: i32 = i32(_l_names.size()) - 1
+        var i: i32 = _l_names.size() - 1
         while i >= 0
-            if _l_names.get(u32(i)) == name_si
+            if _l_names.get(i) == name_si
                 return i
             i--
         return -1
 
     fun local_kind(li: i32) i32
-        return _l_kinds.get(u32(li))
+        return _l_kinds.get(li)
 
     fun local_type(li: i32) i32
-        return _l_types.get(u32(li))
+        return _l_types.get(li)
 
     fun local_slot(li: i32) i32
-        return _l_slots.get(u32(li))
+        return _l_slots.get(li)
 
     fun lookup_global(name: u8[]) i32
         if !_g_names.contains(name)
@@ -173,13 +173,13 @@ class SymbolTable()
         return _g_names.get(name)
 
     fun global_kind(gi: i32) i32
-        return _g_kinds.get(u32(gi))
+        return _g_kinds.get(gi)
 
     fun global_type(gi: i32) i32
-        return _g_types.get(u32(gi))
+        return _g_types.get(gi)
 
     fun global_slot(gi: i32) i32
-        return _g_slots.get(u32(gi))
+        return _g_slots.get(gi)
 
     fun in_local_scope() bool
         return !_l_frame_start.is_empty()

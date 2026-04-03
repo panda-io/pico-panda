@@ -112,10 +112,10 @@ class PpdConfig()
     fun _add_src(s: u8[])
         if _src_count >= _MAX_SRC
             return
-        val base: i32 = i32(_src_count) * i32(_MAX_PATH)
+        val base: i32 = _src_count * _MAX_PATH
         var n: i32 = s.size()
-        if n >= i32(_MAX_PATH)
-            n = i32(_MAX_PATH) - 1
+        if n >= _MAX_PATH
+            n = _MAX_PATH - 1
         var j: i32 = 0
         while j < n
             _src[base + j] = s[j]
@@ -126,24 +126,24 @@ class PpdConfig()
     fun _add_lib(s: u8[])
         if _lib_count >= _MAX_SRC
             return
-        val base: i32 = i32(_lib_count) * i32(_MAX_PATH)
+        val base: i32 = _lib_count * _MAX_PATH
         var n: i32 = s.size()
-        if n >= i32(_MAX_PATH)
-            n = i32(_MAX_PATH) - 1
+        if n >= _MAX_PATH
+            n = _MAX_PATH - 1
         var j: i32 = 0
         while j < n
             _lib[base + j] = s[j]
             j++
         _lib_lens[_lib_count] = n
-        val nm_base: i32 = i32(_lib_count) * i32(_MAX_MOD)
+        val nm_base: i32 = _lib_count * _MAX_MOD
         val nm_len: i32 = _extract_name(s, {&_lib_names[nm_base], _MAX_MOD})
         _lib_nlen[_lib_count] = nm_len
         _lib_count++
 
     fun _set_output(s: u8[])
         var n: i32 = s.size()
-        if n >= i32(_MAX_PATH)
-            n = i32(_MAX_PATH) - 1
+        if n >= _MAX_PATH
+            n = _MAX_PATH - 1
         var j: i32 = 0
         while j < n
             _output[j] = s[j]
@@ -206,19 +206,19 @@ class PpdConfig()
         return _src_count
 
     fun src(i: i32) u8[]
-        val base: u32 = u32(i) * u32(_MAX_PATH)
-        return {&_src[base], _src_lens[u32(i)]}
+        val base: i32 = i * _MAX_PATH
+        return {&_src[base], _src_lens[i]}
 
     fun lib_count() i32
         return _lib_count
 
     fun lib_path(i: i32) u8[]
-        val base: u32 = u32(i) * u32(_MAX_PATH)
-        return {&_lib[base], _lib_lens[u32(i)]}
+        val base: i32 = i * _MAX_PATH
+        return {&_lib[base], _lib_lens[i]}
 
     fun lib_name(i: i32) u8[]
-        val base: u32 = u32(i) * u32(_MAX_MOD)
-        return {&_lib_names[base], _lib_nlen[u32(i)]}
+        val base: i32 = i * _MAX_MOD
+        return {&_lib_names[base], _lib_nlen[i]}
 
     fun output() u8[]
         return {&_output[0], _out_len}

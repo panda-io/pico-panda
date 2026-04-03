@@ -73,7 +73,7 @@ class Checker()
         var buf: u8[128]
         var blen: i32 = 0
         var mi: i32 = 0
-        while mi < i32(mod_name.size()) && blen < 126
+        while mi < mod_name.size() && blen < 126
             buf[blen] = mod_name[mi]
             blen++
             mi++
@@ -84,7 +84,7 @@ class Checker()
             buf[blen] = field_name[fi]
             blen++
             fi++
-        return _scan.str_intern_bytes({&buf[0], u32(blen)}, blen)
+        return _scan.str_intern_bytes({&buf[0], blen}, blen)
 
     fun check() bool
         _errors = 0
@@ -108,7 +108,7 @@ class Checker()
     fun expr_type(h: i32) i32
         if h < 0 || h >= _expr_types.size()
             return TYPE_NONE
-        return _expr_types.get(u32(h))
+        return _expr_types.get(h)
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -123,7 +123,7 @@ class Checker()
     fun _set_expr_type(h: i32, t: i32)
         while _expr_types.size() <= h
             _expr_types.push(TYPE_NONE)
-        _expr_types.set(u32(h), t)
+        _expr_types.set(h, t)
 
     // Returns true for types that are already reference-like (string, slice, array).
     fun _is_wrapped(t: i32) bool
@@ -674,8 +674,8 @@ class Checker()
                 val init_e: i32 = _decls.d2(i)
                 if init_e != -1 && _nodes.kind(init_e) == i32(ExprKind.LIT_INT)
                     if const_count < 64
-                        const_names[u32(const_count)] = _decls.d0(i)
-                        const_vals[u32(const_count)]  = _nodes.d0(init_e)
+                        const_names[const_count] = _decls.d0(i)
+                        const_vals[const_count]  = _nodes.d0(init_e)
                         const_count++
             i++
         // Collect resolved signal IDs from @signal functions
@@ -693,21 +693,21 @@ class Checker()
                     val ann_name: u8[] = _scan.str_get(ann_name_si)
                     var ci: i32 = 0
                     while ci < const_count
-                        if equals(_scan.str_get(const_names[u32(ci)]), ann_name)
-                            sig_id = const_vals[u32(ci)]
+                        if equals(_scan.str_get(const_names[ci]), ann_name)
+                            sig_id = const_vals[ci]
                             break
                         ci++
                 if sig_id >= 0
                     var si: i32 = 0
                     while si < seen_count
-                        if seen_ids[u32(si)] == sig_id
+                        if seen_ids[si] == sig_id
                             _cur_line = _decls.line(i)
                             _error("duplicate signal id")
                             break
                         si++
                     if seen_count < 64
-                        seen_ids[u32(seen_count)]   = sig_id
-                        seen_lines[u32(seen_count)] = _decls.line(i)
+                        seen_ids[seen_count]   = sig_id
+                        seen_lines[seen_count] = _decls.line(i)
                         seen_count++
             i++
 #end

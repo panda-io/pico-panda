@@ -59,27 +59,27 @@ class TypeTable()
         val id: i32 = _next_id++
         _name_to_id.set(name, id)
         _categories.push(cat)
-        _field_start.push(i32(_field_names.size()))
+        _field_start.push(_field_names.size())
         _field_count.push(0)
         return id
 
     fun set_field_type(type_id: i32, fi: i32, t: i32)
-        val start: i32 = _field_start.get(u32(type_id - 4))
-        _field_types.set(u32(start + fi), t)
+        val start: i32 = _field_start.get(type_id - 4)
+        _field_types.set(start + fi, t)
 
     fun add_field(type_id: i32, field_name_si: i32, field_type: i32)
         val idx: i32 = type_id - 4
         _field_names.push(field_name_si)
         _field_types.push(field_type)
         _field_values.push(-1)
-        _field_count.set(u32(idx), _field_count.get(u32(idx)) + 1)
+        _field_count.set(idx, _field_count.get(idx) + 1)
 
     fun add_variant(type_id: i32, variant_name_si: i32, value: i32)
         val idx: i32 = type_id - 4
         _field_names.push(variant_name_si)
         _field_types.push(TYPE_INT)
         _field_values.push(value)
-        _field_count.set(u32(idx), _field_count.get(u32(idx)) + 1)
+        _field_count.set(idx, _field_count.get(idx) + 1)
 
     fun is_named(type_id: i32) bool
         if type_id < 4
@@ -91,27 +91,27 @@ class TypeTable()
         if type_id < 4
             return i32(TypeCategory.PRIM)
         val idx: i32 = type_id - 4
-        return _categories.get(u32(idx))
+        return _categories.get(idx)
 
     fun field_count(type_id: i32) i32
         if type_id < 4
             return 0
-        return _field_count.get(u32(type_id - 4))
+        return _field_count.get(type_id - 4)
 
     fun field_name_si(type_id: i32, fi: i32) i32
-        val start: i32 = _field_start.get(u32(type_id - 4))
-        return _field_names.get(u32(start + fi))
+        val start: i32 = _field_start.get(type_id - 4)
+        return _field_names.get(start + fi)
 
     fun field_type(type_id: i32, fi: i32) i32
-        val start: i32 = _field_start.get(u32(type_id - 4))
-        return _field_types.get(u32(start + fi))
+        val start: i32 = _field_start.get(type_id - 4)
+        return _field_types.get(start + fi)
 
     fun field_offset(type_id: i32, fi: i32) i32
         return fi * 4   // all fields are 4-byte aligned in VM data segment
 
     fun variant_value(type_id: i32, vi: i32) i32
-        val start: i32 = _field_start.get(u32(type_id - 4))
-        val stored: i32 = _field_values.get(u32(start + vi))
+        val start: i32 = _field_start.get(type_id - 4)
+        val stored: i32 = _field_values.get(start + vi)
         if stored >= 0
             return stored
         return vi   // auto-increment from 0
@@ -120,11 +120,11 @@ class TypeTable()
     fun find_field(type_id: i32, name_si: i32) i32
         if type_id < 4
             return -1
-        val start: i32 = _field_start.get(u32(type_id - 4))
-        val count: i32 = _field_count.get(u32(type_id - 4))
+        val start: i32 = _field_start.get(type_id - 4)
+        val count: i32 = _field_count.get(type_id - 4)
         var i: i32 = 0
         while i < count
-            if _field_names.get(u32(start + i)) == name_si
+            if _field_names.get(start + i) == name_si
                 return i
             i++
         return -1

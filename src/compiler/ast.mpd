@@ -105,7 +105,7 @@ class NodePool()
 
     // Allocate a node; returns its handle.
     fun alloc(kind: i32, d0: i32, d1: i32, d2: i32, d3: i32) i32
-        val h: i32 = i32(_kinds.size())
+        val h: i32 = _kinds.size()
         _kinds.push(kind)
         _d0.push(d0)
         _d1.push(d1)
@@ -116,53 +116,53 @@ class NodePool()
 
     @inline
     fun line(h: i32) i32
-        return _lines.get(u32(h))
+        return _lines.get(h)
 
     @inline
     fun kind(h: i32) i32
-        return _kinds.get(u32(h))
+        return _kinds.get(h)
 
     @inline
     fun d0(h: i32) i32
-        return _d0.get(u32(h))
+        return _d0.get(h)
 
     @inline
     fun d1(h: i32) i32
-        return _d1.get(u32(h))
+        return _d1.get(h)
 
     @inline
     fun d2(h: i32) i32
-        return _d2.get(u32(h))
+        return _d2.get(h)
 
     @inline
     fun d3(h: i32) i32
-        return _d3.get(u32(h))
+        return _d3.get(h)
 
     @inline
     fun set_d0(h: i32, v: i32)
-        _d0.set(u32(h), v)
+        _d0.set(h, v)
 
     @inline
     fun set_d1(h: i32, v: i32)
-        _d1.set(u32(h), v)
+        _d1.set(h, v)
 
     @inline
     fun set_d2(h: i32, v: i32)
-        _d2.set(u32(h), v)
+        _d2.set(h, v)
 
     // Append a child handle to the shared list; returns its position.
     fun child_append(child: i32) i32
-        val pos: i32 = i32(_children.size())
+        val pos: i32 = _children.size()
         _children.push(child)
         return pos
 
     @inline
     fun child_get(pos: i32) i32
-        return _children.get(u32(pos))
+        return _children.get(pos)
 
     @inline
     fun children_size() i32
-        return i32(_children.size())
+        return _children.size()
 
     // Convenience: alloc expression nodes
     fun expr_lit_int(v: i32) i32
