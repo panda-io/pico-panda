@@ -173,6 +173,6 @@ vm_tick()                       // one full frame
   takes `h_count` by value and returns the updated count.
 - **C struct ordering**: the generator topologically sorts struct definitions so embedded
   (non-pointer) fields are defined before the containing struct.
-- **Compiler**: `/Users/sang/Dev/panda-io/micro-panda-dart/` — rebuild with `./install.sh`.
+- **Compiler**: `../micro-panda-dart/` — rebuild with `./install.sh`.
 - **Test helper naming**: `_boot(code)` in `vm_test.mpd` (not `_run`) — avoids conflict with
   `_app_run` / `_sys_run` methods on the VM class.
