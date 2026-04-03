@@ -215,7 +215,7 @@ PUSH_FIELD_OFFSET Point y   ; push 4 (byte offset of 'y' in Point)
 
 Emits `PUSH` (0x01) + 4-byte offset.
 
-### `PUSH_STR <"string">` *(planned)*
+### `PUSH_STR <"string">`
 
 Stores the string in the constant pool and pushes its byte address.
 

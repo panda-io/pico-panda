@@ -8,7 +8,7 @@
 // into the shared NodePool / DeclList.
 
 #if HOSTED
-import hosted.memory::HeapAllocator
+import hosted.allocator::HeapAllocator
 import hosted.collection::HeapList
 import hosted.collection::HeapMap
 import compiler.scanner::Scanner
@@ -93,10 +93,8 @@ class Codegen()
         _out_pos++
 
     fun _put_str(s: u8[])
-        var i: u32 = 0
-        while i < s.size()
+        for i in 0..s.size()
             _put(s[i])
-            i++
 
     fun _put_u32(v: u32)
         if v >= u32(10)
@@ -702,7 +700,7 @@ class Codegen()
         if _break_lbl.is_empty()
             _errors++
             return
-        val n: i32 = _break_lbl.get(_break_lbl.size() - u32(1))
+        val n: i32 = _break_lbl.get(_break_lbl.size() - 1)
         _put_str("    JMP ")
         _put_label_ref(n)
         _put_str("\n")
@@ -711,7 +709,7 @@ class Codegen()
         if _cont_lbl.is_empty()
             _errors++
             return
-        val n: i32 = _cont_lbl.get(_cont_lbl.size() - u32(1))
+        val n: i32 = _cont_lbl.get(_cont_lbl.size() - 1)
         _put_str("    JMP ")
         _put_label_ref(n)
         _put_str("\n")
@@ -897,15 +895,15 @@ class Codegen()
         val ps: i32 = _decls.d1(di)  // params_start in child list
         val pc: i32 = _decls.d2(di)  // params_count
         _put_str("    ")
-        var ti: u32 = u32(0)
+        var ti: i32 = 0
         while ti < tmpl.size()
             val c: u8 = tmpl[ti]
             if c == u8(123)  // '{'
                 ti++
-                val pname_start: u32 = ti
+                val pname_start: i32 = ti
                 while ti < tmpl.size() && tmpl[ti] != u8(125)  // '}'
                     ti++
-                val pname_len: u32 = ti - pname_start
+                val pname_len: i32 = ti - pname_start
                 val pname: u8[] = {&tmpl[pname_start], pname_len}
                 // find param index by name
                 var pi: i32 = 0

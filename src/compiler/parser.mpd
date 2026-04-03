@@ -20,7 +20,7 @@
 // A newline that is NOT followed by INDENT is a statement terminator.
 
 #if HOSTED
-import hosted.memory::HeapAllocator
+import hosted.allocator::HeapAllocator
 import hosted.collection::HeapList
 import hosted.collection::HeapMap
 import compiler.scanner::Scanner
@@ -133,9 +133,9 @@ class DeclList()
 
 // Default error location printer: "line N: "
 fun _default_error_loc(line: i32)
-    print_str("line ")
-    print_i32(line)
-    print_str(": ")
+    write_string("line ")
+    write_i32(line)
+    write_string(": ")
 
 class Parser()
     var _heap:           &HeapAllocator
@@ -224,14 +224,14 @@ class Parser()
 
     fun _error_expected(k: i32)
         _error_loc(_line())
-        print_str("error: unexpected token\n")
+        write_string("error: unexpected token\n")
         _errors++
 
     fun _error(msg: u8[])
         _error_loc(_line())
-        print_str("error: ")
-        print_str(msg)
-        print_str("\n")
+        write_string("error: ")
+        write_string(msg)
+        write_string("\n")
         _errors++
 
     fun _recover_top_level()

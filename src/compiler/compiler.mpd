@@ -20,7 +20,7 @@
 //       c.write_bytecode("out.ppd")
 
 #if HOSTED
-import hosted.memory::HeapAllocator
+import hosted.allocator::HeapAllocator
 import compiler.scanner::Scanner
 import compiler.parser::Parser
 import compiler.checker::Checker

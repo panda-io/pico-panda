@@ -278,7 +278,7 @@ class VM()
     fun _process_signal(sig: &Signal, handler: &Handler, which: Code)
         // ignore handlers if its task is suspended (sleeping) or not active
         if handler.active && handler.signal_id == sig.id && handler.task == null
-            val task: &Task = _spawn_task(handler.addr, _ctx_tasks(which))
+            val task: &Task = _spawn_task(handler.address, _ctx_tasks(which))
             if task != null
                 _load_signal_data(sig, task)
                 _run_execute(task, which)
@@ -355,7 +355,7 @@ class VM()
         _print_error_msg(code)
         val saved: u8[] = _sys_code
         reset()
-        if saved.size() > u32(0)
+        if saved.size() > 0
             _sys_code = saved
             _boot_sys_no_err()
 
@@ -373,7 +373,7 @@ class VM()
                 _last_error = task.error
                 task.state = TaskState.FINISHED
                 continue
-            if pc >= i32(code.size)
+            if pc >= code.size
                 task.state = TaskState.FINISHED
                 continue
             val op: i32 = i32(code[pc])

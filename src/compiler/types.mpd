@@ -9,7 +9,7 @@
 //   T[]        → TYPE_SLICE_BASE + inner_type_id
 
 #if HOSTED
-import hosted.memory::HeapAllocator
+import hosted.allocator::HeapAllocator
 import hosted.collection::HeapList
 import hosted.collection::HeapMap
 import compiler.ast::*
@@ -84,7 +84,7 @@ class TypeTable()
     fun is_named(type_id: i32) bool
         if type_id < 4
             return false
-        val idx: u32 = u32(type_id - 4)
+        val idx: i32 = type_id - 4
         return idx < _categories.size()
 
     fun category(type_id: i32) i32

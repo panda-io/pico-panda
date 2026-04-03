@@ -54,12 +54,12 @@ fun _error_loc(line: i32)
         i++
     val local_line: i32 = line - _fm_starts[u32(fi)] + 1
     if fi == 0
-        print_str("<boot>:")
+        write_string("<boot>:")
     else
-        print_str(_cfg.src(fi - 1))
-        print_str(":")
-    print_i32(local_line)
-    print_str(": ")
+        write_string(_cfg.src(fi - 1))
+        write_string(":")
+    write_i32(local_line)
+    write_string(": ")
 
 // ── Compile command ───────────────────────────────────────────────────────────
 
@@ -68,35 +68,33 @@ fun _read_into_src(path: u8[], offset: i32, remaining: i32) i32
     var f: File
     if !f.open(path, READ)
         return -1
-    val n: u32 = f.read_bytes({&_src_buf[offset], u32(remaining)})
+    val n: i32 = f.read_bytes({&_src_buf[offset], remaining})
     f.close()
     return i32(n)
 
 fun _cmd_compile()
     if !_cfg.load("ppd.cfg")
-        print_str("error: cannot open 'ppd.cfg'")
-        println()
+        write_string("error: cannot open 'ppd.cfg'\n")
         return
     if !_cfg.valid()
-        print_str("error: 'ppd.cfg' must define 'src' and 'output'")
-        println()
+        write_string("error: 'ppd.cfg' must define 'src' and 'output'\n")
         return
 
     var i: i32 = 0
     while i < _cfg.src_count()
         if !ends_with(_cfg.src(i), ".ppd")
-            print_str("error: only *.ppd supported: ")
-            print_str(_cfg.src(i))
-            println()
+            write_string("error: only *.ppd supported: ")
+            write_string(_cfg.src(i))
+            write_string("\n")
             return
         i++
 
     i = 0
     while i < _cfg.lib_count()
         if !ends_with(_cfg.lib_path(i), ".ppd")
-            print_str("error: only *.ppd supported: ")
-            print_str(_cfg.lib_path(i))
-            println()
+            write_string("error: only *.ppd supported: ")
+            write_string(_cfg.lib_path(i))
+            write_string("\n")
             return
         i++
 
@@ -148,10 +146,10 @@ fun _cmd_compile()
         val file_start: i32 = pos
         n = _read_into_src(_cfg.lib_path(i), pos, buf_end - pos)
         if n < 0
-            print_str("error: cannot open '")
-            print_str(_cfg.lib_path(i))
-            print_str("'")
-            println()
+            write_string("error: cannot open '")
+            write_string(_cfg.lib_path(i))
+            write_string("'")
+            write_string("\n")
             return
         pos = pos + n
         _src_buf[pos] = u8(10)
@@ -180,10 +178,10 @@ fun _cmd_compile()
         val file_start: i32 = pos
         n = _read_into_src(_cfg.src(i), pos, buf_end - pos)
         if n < 0
-            print_str("error: cannot open '")
-            print_str(_cfg.src(i))
-            print_str("'")
-            println()
+            write_string("error: cannot open '")
+            write_string(_cfg.src(i))
+            write_string("'")
+            write_string("\n")
             return
         pos = pos + n
         _src_buf[pos] = u8(10)
@@ -195,48 +193,42 @@ fun _cmd_compile()
     _compiler.set_error_loc(_error_loc)
     val src: u8[] = {&_src_buf[0], u32(pos)}
     if !_compiler.compile(src)
-        print_str("compile error (")
-        print_i32(_compiler.error_count())
-        print_str(" error(s))")
-        println()
+        write_string("compile error (")
+        write_i32(_compiler.error_count())
+        write_string(" error(s))\n")
         return
 
     // Assemble and write bytecode
     if !_compiler.write_bytecode(_cfg.output())
-        print_str("error: failed to write '")
-        print_str(_cfg.output())
-        print_str("'")
-        println()
+        write_string("error: failed to write '")
+        write_string(_cfg.output())
+        write_string("'\n")
         return
 
-    print_str("compiled to '")
-    print_str(_cfg.output())
-    print_str("'")
-    println()
+    write_string("compiled to '")
+    write_string(_cfg.output())
+    write_string("'\n")
 
 // ── Run command ───────────────────────────────────────────────────────────────
 
 fun _cmd_run(path: u8[], fps: i32)
     var run_path: u8[] = path
-    if path.size() == u32(0)
+    if path.size() == 0
         if !_cfg.load("ppd.cfg")
-            print_str("error: cannot open 'ppd.cfg'")
-            println()
+            write_string("error: cannot open 'ppd.cfg'\n")
             return
         if !_cfg.valid()
-            print_str("error: 'ppd.cfg' must define 'output'")
-            println()
+            write_string("error: 'ppd.cfg' must define 'output'\n")
             return
         run_path = _cfg.output()
 
     var f: File
     if !f.open(run_path, READ)
-        print_str("error: cannot open '")
-        print_str(run_path)
-        print_str("'")
-        println()
+        write_string("error: cannot open '")
+        write_string(run_path)
+        write_string("'\n")
         return
-    val n: u32 = f.read_bytes({&_run_buf[0], u32(MAX_CODE)})
+    val n: i32 = f.read_bytes({&_run_buf[0], MAX_CODE})
     f.close()
 
     vm_reset()
@@ -265,50 +257,39 @@ fun _cmd_init()
     var chk: File
     if chk.open("ppd.cfg", READ)
         chk.close()
-        print_str("error: 'ppd.cfg' already exists")
-        println()
+        write_string("error: 'ppd.cfg' already exists\n")
         return
     var f: File
     if !f.open("ppd.cfg", WRITE)
-        print_str("error: cannot create 'ppd.cfg'")
-        println()
+        write_string("error: cannot create 'ppd.cfg'\n")
         return
     f.write_bytes("# ppd.cfg — Pico Panda project\n")
     f.write_bytes("src    = src/\n")
     f.write_bytes("lib    = lib/\n")
     f.write_bytes("output = main.ppbc\n")
     f.close()
-    print_str("created 'ppd.cfg'")
-    println()
+    write_string("created 'ppd.cfg'\n")
     folder_create("src")
     folder_create("lib")
-    print_str("created 'lib/'")
-    println()
+    write_string("created 'lib/'\n")
     var m: File
     if !m.open("src/main.ppd", WRITE)
-        print_str("error: cannot create 'src/main.ppd'")
-        println()
+        write_string("error: cannot create 'src/main.ppd'\n")
         return
     m.write_bytes("@signal(SIGNAL_SYS_START)\n")
     m.write_bytes("fun on_start()\n")
     m.write_bytes("    exit()\n")
     m.close()
-    print_str("created 'src/main.ppd'")
-    println()
+    write_string("created 'src/main.ppd'\n")
 
 // ── Usage ─────────────────────────────────────────────────────────────────────
 
 fun _usage()
-    print_str("usage: ppd <command>")
-    println()
-    print_str("  init              create ppd.cfg template in current directory")
-    println()
-    print_str("  compile           compile project from ppd.cfg")
-    println()
-    print_str("  run [file]        run bytecode (default: ppd.cfg output)")
-    println()
-    print_str("    -fps N          tick rate in Hz (default: 100)")
-    println()
+    write_string("usage: ppd <command>\n")
+    write_string("  init              create ppd.cfg template in current directory\n")
+    write_string("  compile           compile project from ppd.cfg\n")
+    write_string("  run [file]        run bytecode (default: ppd.cfg output)\n")
+    write_string("    -fps N          tick rate in Hz (default: 100)\n")
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 

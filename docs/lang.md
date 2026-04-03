@@ -132,10 +132,10 @@ var buf: byte[256]
 var \1: byte[] = {&buf, 64}      // ptr = address of buf, len = 64
 ```
 
-**`.len`** — extract the length (high 16 bits):
+**`.size()`** — extract the length (high 16 bits):
 
 ```pico-panda
-var \1: int = s.len              // n = 64
+var \1: int = s.size()              // n = 64
 ```
 
 **Indexing** — extract ptr (low 16 bits), add element offset, load/store:
@@ -157,22 +157,18 @@ Because a slice is just an `int`, it passes and returns by value with no overhea
 ```pico-panda
 fun sum(data: int[], n: int) int
     var total: int = 0
-    var i: int = 0
-    while i < n
+    for i in 0..n
         total = total + data[i]
-        i = i + 1
     return total
 ```
 
-Or use `.len` directly when the length is encoded in the slice:
+Or use `.size` directly when the length is encoded in the slice:
 
 ```pico-panda
 fun sum(data: int[]) int
     var total: int = 0
-    var i: int = 0
-    while i < data.len
+    for i in 0..data.size()
         total = total + data[i]
-        i = i + 1
     return total
 ```
 

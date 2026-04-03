@@ -66,7 +66,7 @@ and the code segment are at most 64 KB (16-bit addressable).
 - `len = (dword >> 16) & 0xFFFF` — number of elements
 
 The compiler emits the bit extraction and `MEM_LOAD_*` / `MEM_STORE_*` opcodes
-for `s[i]` and `s.len` accesses. Programs never pack or unpack the dword manually.
+for `s[i]` and `s.size()` accesses. Programs never pack or unpack the dword manually.
 
 ### Constant Pool
 

@@ -78,10 +78,8 @@ fun on_start()
     // ── Accumulate through slice ─────────────────────────────────────────────
 
     var total: int = 0
-    var i: int = 0
-    while i < 5
+    for i in 0..5
         total = total + score_slice[i]
-        i = i + 1
 
     print_str("sum:           ") print_int(total) print_str("\n")
 

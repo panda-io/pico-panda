@@ -15,7 +15,7 @@
 // referenced by their string-pool index stored in a d-slot.
 
 #if HOSTED
-import hosted.memory::HeapAllocator
+import hosted.allocator::HeapAllocator
 import hosted.collection::HeapList
 
 // ── Node kinds ────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ enum ExprKind
     CAST        = 10  // d0=type_id, d1=expr
     REF         = 11  // d0=expr  (&expr — take address)
     SLICE_LIT   = 12  // d0=addr_expr, d1=len_expr  ({&buf, n})
-    SLICE_LEN   = 13  // d0=base   (base.len — high 16 bits)
+    SLICE_LEN   = 13  // d0=base   (base.size() — high 16 bits)
     ARRAY_LIT   = 14  // d0=elems_start, d1=elems_count  ([e1,e2,...] global init)
 
 enum StmtKind

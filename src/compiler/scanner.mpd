@@ -14,7 +14,7 @@
 // NEWLINE is injected at the end of each logical line.
 
 #if HOSTED
-import hosted.memory::HeapAllocator
+import hosted.allocator::HeapAllocator
 import hosted.collection::HeapList
 import string::*
 
@@ -90,7 +90,7 @@ class Scanner()
 
     // Intern an arbitrary byte slice (not from _src). Returns string index.
     fun str_intern_bytes(buf: u8[], len: i32) i32
-        var i: u32 = 1
+        var i: i32 = 1
         while i < _str_off.size()
             if _str_len.get(i) == len
                 val off := u32(_str_off.get(i))
@@ -168,19 +168,19 @@ class Scanner()
 
     fun _intern(start: i32, len: i32) i32
         // Search for existing entry
-        var i: u32 = 1
+        var i: i32 = 1
         while i < _str_off.size()
             if _str_len.get(i) == len
-                val off := u32(_str_off.get(i))
+                val off := _str_off.get(i)
                 var found: bool = true
                 var j: i32 = 0
                 while j < len
-                    if _str_data[off + u32(j)] != _src[u32(start + j)]
+                    if _str_data[off + j] != _src[start + j]
                         found = false
                         break
                     j++
                 if found
-                    return i32(i)
+                    return i
             i++
         // New entry — grow _str_data if needed
         val idx: i32 = i32(_str_off.size())
@@ -520,6 +520,6 @@ class Scanner()
         // ── close any open indent levels ──────────────────────────────────
         while _indent_stack.size() > 1
             _indent_stack.pop()
-            _emit(i32(TokenKind.DEDENT), _line, 0)
-        _emit(i32(TokenKind.EOF), _line, 0)
+            _emit(TokenKind.DEDENT, _line, 0)
+        _emit(TokenKind.EOF, _line, 0)
 #end

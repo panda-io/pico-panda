@@ -5,12 +5,12 @@ import vm.task::Task
 class Handler()
     var active:    bool
     var signal_id: i32          // signal_id this handler listens to
-    var addr:      i32          // bytecode entry address
+    var address:   i32          // bytecode entry address
     var task:      &Task        // active task slot (-1 = none)
 
     @inline
-    fun init(ev: i32, a: i32)
-        signal_id = ev
-        addr  = a
+    fun init(sig: i32, addr: i32)
+        signal_id = signal_id
+        address  = addr
         task  = null
         active = true

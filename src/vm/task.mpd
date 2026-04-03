@@ -41,11 +41,11 @@ class Task()
             regs[i] = 0
 
     @inline
-    fun push(v: i32)
+    fun push(value: i32)
         if sp >= STACK_SIZE
             error = VmError.STACK_OVERFLOW
             return
-        stack[sp] = v
+        stack[sp] = value
         sp = sp + 1
 
     @inline

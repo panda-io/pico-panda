@@ -17,7 +17,7 @@
 //              for consts: literal value (int) or -1 (needs codegen inline)
 
 #if HOSTED
-import hosted.memory::HeapAllocator
+import hosted.allocator::HeapAllocator
 import hosted.collection::HeapList
 import hosted.collection::HeapMap
 

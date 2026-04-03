@@ -11,7 +11,7 @@
 // expr_type(h) returns the inferred type_id for expression node h.
 
 #if HOSTED
-import hosted.memory::HeapAllocator
+import hosted.allocator::HeapAllocator
 import hosted.collection::HeapList
 import hosted.collection::HeapMap
 import compiler.scanner::Scanner
@@ -74,14 +74,14 @@ class Checker()
         var blen: i32 = 0
         var mi: i32 = 0
         while mi < i32(mod_name.size()) && blen < 126
-            buf[u32(blen)] = mod_name[u32(mi)]
+            buf[blen] = mod_name[mi]
             blen++
             mi++
-        buf[u32(blen)] = u8(95)   // '_'
+        buf[blen] = u8(95)   // '_'
         blen++
         var fi: i32 = 0
-        while fi < i32(field_name.size()) && blen < 127
-            buf[u32(blen)] = field_name[u32(fi)]
+        while fi < field_name.size() && blen < 127
+            buf[blen] = field_name[fi]
             blen++
             fi++
         return _scan.str_intern_bytes({&buf[0], u32(blen)}, blen)
@@ -106,7 +106,7 @@ class Checker()
 
     // Return inferred type for expression node h (-1 = not yet checked).
     fun expr_type(h: i32) i32
-        if h < 0 || h >= i32(_expr_types.size())
+        if h < 0 || h >= _expr_types.size()
             return TYPE_NONE
         return _expr_types.get(u32(h))
 
@@ -115,13 +115,13 @@ class Checker()
     fun _error(msg: u8[])
         if _has_err_loc && _cur_line != 0
             _error_loc(_cur_line)
-        print_str("check error: ")
-        print_str(msg)
-        print_str("\n")
+        write_string("check error: ")
+        write_string(msg)
+        write_string("\n")
         _errors++
 
     fun _set_expr_type(h: i32, t: i32)
-        while i32(_expr_types.size()) <= h
+        while _expr_types.size() <= h
             _expr_types.push(TYPE_NONE)
         _expr_types.set(u32(h), t)
 
@@ -647,7 +647,7 @@ class Checker()
                 _set_expr_type(base_h, enum_tid)
                 return enum_tid  // variant has the enum's type, not raw int
         val bt: i32 = _check_expr(base_h)
-        // .len on slice
+        // .size() on slice
         val field_name: u8[] = _scan.str_get(field_si)
         if equals(field_name, "len")
             return TYPE_INT
