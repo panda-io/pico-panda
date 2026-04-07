@@ -3,6 +3,10 @@
 @signal(SIGNAL_SYS_START)
 fun on_start_0()
     print_str("start with priority 0\n")
+    
+@signal(SIGNAL_SYS_START)
+fun on_start_0_2nd()
+    print_str("start another task with priority 0\n")
 
 @signal(SIGNAL_SYS_START, 99)
 fun on_start_99()
