@@ -10,7 +10,7 @@ class Handler()
 
     @inline
     fun init(sig: int, addr: int)
-        signal_id = signal_id
+        signal_id = sig
         address  = addr
         task  = null
         active = true
