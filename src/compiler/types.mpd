@@ -17,7 +17,7 @@ import compiler.ast::*
 enum TypeCategory
     PRIM        = 0   // int / fixed / bool / byte
     DATA        = 1   // data struct
-    ENUM        = 2   // simple i32 enum
+    ENUM        = 2   // simple int enum
 
 // ── Named type entry ──────────────────────────────────────────────────────────
 // For data types: _type_fields / _type_field_count give the field list.
@@ -26,14 +26,14 @@ enum TypeCategory
 
 class TypeTable()
     var _heap:             &HeapAllocator
-    var _name_to_id:       HeapMap<i32>     // type name → type ID (4+)
-    var _categories:       HeapList<i32>    // TypeCategory per named type (index = id-4)
-    var _field_start:      HeapList<i32>    // start in _field_names/types per named type
-    var _field_count:      HeapList<i32>
-    var _field_names:      HeapList<i32>    // string indices (from Scanner)
-    var _field_types:      HeapList<i32>    // type IDs per field
-    var _field_values:     HeapList<i32>    // for enum variants: explicit value (-1 = auto)
-    var _next_id:          i32 = 4          // first named type ID
+    var _name_to_id:       HeapMap<int>     // type name → type ID (4+)
+    var _categories:       HeapList<int>    // TypeCategory per named type (index = id-4)
+    var _field_start:      HeapList<int>    // start in _field_names/types per named type
+    var _field_count:      HeapList<int>
+    var _field_names:      HeapList<int>    // string indices (from Scanner)
+    var _field_types:      HeapList<int>    // type IDs per field
+    var _field_values:     HeapList<int>    // for enum variants: explicit value (-1 = auto)
+    var _next_id:          int = 4          // first named type ID
 
     fun init(heap: &HeapAllocator)
         _heap = heap
@@ -46,83 +46,83 @@ class TypeTable()
         _field_types.init(heap)
         _field_values.init(heap)
 
-    fun contains(name: u8[]) bool
+    fun contains(name: byte[]) bool
         return _name_to_id.contains(name)
 
-    fun lookup(name: u8[]) i32
+    fun lookup(name: byte[]) int
         if _name_to_id.contains(name)
             return _name_to_id.get(name)
         return TYPE_NONE
 
     // Register a new named type. Returns its ID.
-    fun register(name: u8[], cat: i32) i32
-        val id: i32 = _next_id++
+    fun register(name: byte[], cat: int) int
+        val id: int = _next_id++
         _name_to_id.set(name, id)
         _categories.push(cat)
         _field_start.push(_field_names.size())
         _field_count.push(0)
         return id
 
-    fun set_field_type(type_id: i32, fi: i32, t: i32)
-        val start: i32 = _field_start.get(type_id - 4)
+    fun set_field_type(type_id: int, fi: int, t: int)
+        val start: int = _field_start.get(type_id - 4)
         _field_types.set(start + fi, t)
 
-    fun add_field(type_id: i32, field_name_si: i32, field_type: i32)
-        val idx: i32 = type_id - 4
+    fun add_field(type_id: int, field_name_si: int, field_type: int)
+        val idx: int = type_id - 4
         _field_names.push(field_name_si)
         _field_types.push(field_type)
         _field_values.push(-1)
         _field_count.set(idx, _field_count.get(idx) + 1)
 
-    fun add_variant(type_id: i32, variant_name_si: i32, value: i32)
-        val idx: i32 = type_id - 4
+    fun add_variant(type_id: int, variant_name_si: int, value: int)
+        val idx: int = type_id - 4
         _field_names.push(variant_name_si)
         _field_types.push(TYPE_INT)
         _field_values.push(value)
         _field_count.set(idx, _field_count.get(idx) + 1)
 
-    fun is_named(type_id: i32) bool
+    fun is_named(type_id: int) bool
         if type_id < 4
             return false
-        val idx: i32 = type_id - 4
+        val idx: int = type_id - 4
         return idx < _categories.size()
 
-    fun category(type_id: i32) i32
+    fun category(type_id: int) int
         if type_id < 4
-            return i32(TypeCategory.PRIM)
-        val idx: i32 = type_id - 4
+            return int(TypeCategory.PRIM)
+        val idx: int = type_id - 4
         return _categories.get(idx)
 
-    fun field_count(type_id: i32) i32
+    fun field_count(type_id: int) int
         if type_id < 4
             return 0
         return _field_count.get(type_id - 4)
 
-    fun field_name_si(type_id: i32, fi: i32) i32
-        val start: i32 = _field_start.get(type_id - 4)
+    fun field_name_si(type_id: int, fi: int) int
+        val start: int = _field_start.get(type_id - 4)
         return _field_names.get(start + fi)
 
-    fun field_type(type_id: i32, fi: i32) i32
-        val start: i32 = _field_start.get(type_id - 4)
+    fun field_type(type_id: int, fi: int) int
+        val start: int = _field_start.get(type_id - 4)
         return _field_types.get(start + fi)
 
-    fun field_offset(type_id: i32, fi: i32) i32
+    fun field_offset(type_id: int, fi: int) int
         return fi * 4   // all fields are 4-byte aligned in VM data segment
 
-    fun variant_value(type_id: i32, vi: i32) i32
-        val start: i32 = _field_start.get(type_id - 4)
-        val stored: i32 = _field_values.get(start + vi)
+    fun variant_value(type_id: int, vi: int) int
+        val start: int = _field_start.get(type_id - 4)
+        val stored: int = _field_values.get(start + vi)
         if stored >= 0
             return stored
         return vi   // auto-increment from 0
 
     // Find field index by name string index. Returns -1 if not found.
-    fun find_field(type_id: i32, name_si: i32) i32
+    fun find_field(type_id: int, name_si: int) int
         if type_id < 4
             return -1
-        val start: i32 = _field_start.get(type_id - 4)
-        val count: i32 = _field_count.get(type_id - 4)
-        var i: i32 = 0
+        val start: int = _field_start.get(type_id - 4)
+        val count: int = _field_count.get(type_id - 4)
+        var i: int = 0
         while i < count
             if _field_names.get(start + i) == name_si
                 return i
@@ -131,31 +131,31 @@ class TypeTable()
 
     // Helpers for composite type IDs
     @inline
-    fun ref_of(inner: i32) i32
+    fun ref_of(inner: int) int
         return TYPE_REF_BASE + inner
 
     @inline
-    fun array_of(elem: i32) i32
+    fun array_of(elem: int) int
         return TYPE_ARRAY_BASE + elem
 
     @inline
-    fun slice_of(elem: i32) i32
+    fun slice_of(elem: int) int
         return TYPE_SLICE_BASE + elem
 
     @inline
-    fun is_ref(type_id: i32) bool
+    fun is_ref(type_id: int) bool
         return type_id >= TYPE_REF_BASE && type_id < TYPE_ARRAY_BASE
 
     @inline
-    fun is_array(type_id: i32) bool
+    fun is_array(type_id: int) bool
         return type_id >= TYPE_ARRAY_BASE && type_id < TYPE_SLICE_BASE
 
     @inline
-    fun is_slice(type_id: i32) bool
+    fun is_slice(type_id: int) bool
         return type_id >= TYPE_SLICE_BASE && type_id < TYPE_SLICE_BASE + 1000
 
     @inline
-    fun inner_type(type_id: i32) i32
+    fun inner_type(type_id: int) int
         if type_id >= TYPE_SLICE_BASE
             return type_id - TYPE_SLICE_BASE
         if type_id >= TYPE_ARRAY_BASE
@@ -163,7 +163,7 @@ class TypeTable()
         return type_id - TYPE_REF_BASE
 
     // Size of one element in the data segment (bytes)
-    fun elem_size(type_id: i32) i32
+    fun elem_size(type_id: int) int
         if type_id == TYPE_BYTE
             return 1
         return 4

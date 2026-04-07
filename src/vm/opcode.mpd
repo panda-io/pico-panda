@@ -2,22 +2,22 @@
 
 enum OpCode
     // Immediate
-    Push         = 0x01  // PUSH i32 (4-byte little-endian)
+    Push         = 0x01  // PUSH int (4-byte little-endian)
     // Stack
     Dup          = 0x02
     Swap         = 0x03
     Drop         = 0x04
     // Local data segment
-    LoadLocal       = 0x10  // LOAD_LOCAL slot(u8)    → push stack[fp + slot]
-    StoreLocal      = 0x11  // STORE_LOCAL slot(u8)   → stack[fp + slot] = pop()
+    LoadLocal       = 0x10  // LOAD_LOCAL slot(byte)    → push stack[fp + slot]
+    StoreLocal      = 0x11  // STORE_LOCAL slot(byte)   → stack[fp + slot] = pop()
     // Global data segment
-    LoadGlobal      = 0x12  // LOAD_GLOBAL addr(u16)  → push data[addr] as i32
-    StoreGlobal     = 0x13  // STORE_GLOBAL addr(u16) → pop i32 → data[addr]
-    LoadGlobalInd   = 0x14  // LOAD_GLOBAL_IND  → pop addr, push data[addr] as i32
+    LoadGlobal      = 0x12  // LOAD_GLOBAL addr(u16)  → push data[addr] as int
+    StoreGlobal     = 0x13  // STORE_GLOBAL addr(u16) → pop int → data[addr]
+    LoadGlobalInd   = 0x14  // LOAD_GLOBAL_IND  → pop addr, push data[addr] as int
     StoreGlobalInd  = 0x15  // STORE_GLOBAL_IND → pop addr, pop val, data[addr] = val
     // Registers data segment
-    LoadReg         = 0x16  // LOAD_REG slot(u8) → push task.regs[slot]
-    StoreReg        = 0x17  // STORE_REG slot(u8) → task.regs[slot] = pop()
+    LoadReg         = 0x16  // LOAD_REG slot(byte) → push task.regs[slot]
+    StoreReg        = 0x17  // STORE_REG slot(byte) → task.regs[slot] = pop()
     // Integer arithmetic
     AddInt       = 0x20
     SubInt       = 0x21
@@ -58,16 +58,16 @@ enum OpCode
     Jmp          = 0x60  // JMP addr (u16)
     JmpIfTrue    = 0x61  // JMP_IF_TRUE addr (u16)
     JmpIfFalse   = 0x62  // JMP_IF_FALSE addr (u16)
-    Call         = 0x63  // CALL addr(u16) argc(u8) → fp = sp - argc; saves frame state
-    Reserve      = 0x64  // RESERVE n(u8) → push n zeros (callee var slots)
+    Call         = 0x63  // CALL addr(u16) argc(byte) → fp = sp - argc; saves frame state
+    Reserve      = 0x64  // RESERVE n(byte) → push n zeros (callee var slots)
     Ret          = 0x65  // RET
     // Module dispatch
-    CallModule   = 0x70  // CALL_MODULE module_id(u8) sub(u8)
+    CallModule   = 0x70  // CALL_MODULE module_id(byte) sub(byte)
 
 // ── Built-in module IDs ───────────────────────────────────────────────────────
 
-const MODULE_CONSOLE: u8 = 0x01
-const MODULE_SIGNAL:   u8 = 0x02
+const MODULE_CONSOLE: byte = 0x01
+const MODULE_SIGNAL:   byte = 0x02
 
 // ── Console sub-codes (MODULE_CONSOLE) ───────────────────────────────────────
 

@@ -27,31 +27,31 @@ enum VmError
 class VM()
     val _tasks:                Task[SYS_MAX_TASKS + APP_MAX_TASKS]
     val _handlers:             Handler[SYS_MAX_HANDLERS + APP_MAX_HANDLERS]
-    val _sys_data_buf:         u8[SYS_MEMORY_SIZE]
-    val _app_data_buf:         u8[APP_MEMORY_SIZE]
+    val _sys_data_buf:         byte[SYS_MEMORY_SIZE]
+    val _app_data_buf:         byte[APP_MEMORY_SIZE]
 
     // ── System context ───────────────────────────────────────────────────────
-    var _sys_code:             u8[]
-    var _sys_data:             u8[]
+    var _sys_code:             byte[]
+    var _sys_data:             byte[]
     var _sys_tasks:            Task[]
     var _sys_handlers:         Handler[]
 
     // ── Application context ──────────────────────────────────────────────────
-    var _app_code:             u8[]
-    var _app_data:             u8[]
+    var _app_code:             byte[]
+    var _app_data:             byte[]
     var _app_tasks:            Task[]
     var _app_handlers:         Handler[]
 
     // ── Shared signal queue (ring buffer) ────────────────────────────────────
     var _signals:              Signal[VM_MAX_SIGNALS]
-    var _sig_head:             i32
-    var _sig_tail:             i32
-    var _sig_size:             i32
+    var _sig_head:             int
+    var _sig_tail:             int
+    var _sig_size:             int
 
     // ── Module registry ───────────────────────────────────────────────────────
-    var _module_slots:         u8[MAX_MODULE_ID]     // module_id → slot+1 (0 = empty)
-    var _module_fns:           fun(u8, &Task)[MAX_MODULES]
-    var _module_count:         i32
+    var _module_slots:         byte[MAX_MODULE_ID]     // module_id → slot+1 (0 = empty)
+    var _module_fns:           fun(byte, &Task)[MAX_MODULES]
+    var _module_count:         int
     var _current_code:         Code
 
     // ── Exit flag ─────────────────────────────────────────────────────────────
@@ -72,9 +72,9 @@ class VM()
         _app_tasks    = {&_tasks[SYS_MAX_TASKS], APP_MAX_TASKS}
         _app_handlers = {&_handlers[SYS_MAX_HANDLERS], APP_MAX_HANDLERS}
         for i in 0..SYS_MEMORY_SIZE
-            _sys_data_buf[i] = u8(0)
+            _sys_data_buf[i] = byte(0)
         for i in 0..APP_MEMORY_SIZE
-            _app_data_buf[i] = u8(0)
+            _app_data_buf[i] = byte(0)
         _sig_head         = 0
         _sig_tail         = 0
         _sig_size         = 0
@@ -83,7 +83,7 @@ class VM()
         _module_count     = 0
         _current_code     = Code.Sys
         for i in 0..MAX_MODULE_ID
-            _module_slots[i] = u8(0)
+            _module_slots[i] = byte(0)
         for handler: &Handler in _handlers
             handler.active = false
             handler.task = null
@@ -100,19 +100,19 @@ class VM()
 
     // ── Module registry ───────────────────────────────────────────────────────
 
-    fun register_module(id: u8, handler: fun(u8, &Task))
+    fun register_module(id: byte, handler: fun(byte, &Task))
         if _module_count >= 8
             return
-        _module_slots[id] = u8(_module_count + 1)
+        _module_slots[id] = byte(_module_count + 1)
         _module_fns[_module_count] = handler
         _module_count++
 
     // ── Code loading ─────────────────────────────────────────────────────────
 
-    fun load_sys(binary: u8[])
+    fun load_sys(binary: byte[])
         _sys_code = binary
 
-    fun load_app(binary: u8[])
+    fun load_app(binary: byte[])
         _app_code = binary
 
     // ── Boot ─────────────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ class VM()
 
     // ── Signal queue ─────────────────────────────────────────────────────────
 
-    fun emit_signal(id: i32, param0: i32, param1: i32, param2: i32, param3: i32)
+    fun emit_signal(id: int, param0: int, param1: int, param2: int, param3: int)
         if _sig_size >= VM_MAX_SIGNALS
             _on_error(VmError.SIGNAL_FULL)
             return
@@ -157,7 +157,7 @@ class VM()
 
     // ── Tick ─────────────────────────────────────────────────────────────────
 
-    fun tick(delta_raw: i32)
+    fun tick(delta_raw: int)
         // 0. Send tick signal — delta_raw is the raw 16.16 fixed-point ms value
         emit_signal(SIGNAL_TICK, delta_raw, 0, 0, 0)
 
@@ -198,13 +198,13 @@ class VM()
     // ── Private: context helpers ──────────────────────────────────────────────
 
     @inline
-    fun _code(which: Code) u8[]
+    fun _code(which: Code) byte[]
         if which == Code.Sys
             return _sys_code
         return _app_code
 
     @inline
-    fun _data(which: Code) u8[]
+    fun _data(which: Code) byte[]
         if which == Code.Sys
             return _sys_data
         return _app_data
@@ -237,7 +237,7 @@ class VM()
                 handler.task = null
 
     @inline
-    fun _spawn_task(addr: i32, tasks: Task[]) &Task
+    fun _spawn_task(addr: int, tasks: Task[]) &Task
         for task: &Task in tasks
             if !task.active
                 task.reset(addr)
@@ -292,7 +292,7 @@ class VM()
                     handler.task = task
 
     @inline
-    fun _send_signal(id: i32, task: &Task)
+    fun _send_signal(id: int, task: &Task)
         if _sig_size >= VM_MAX_SIGNALS
             _last_error = VmError.SIGNAL_FULL
             task.state = TaskState.FINISHED
@@ -305,19 +305,19 @@ class VM()
     // ── Private: read/write helpers ───────────────────────────────────────────
 
     @inline
-    fun _read_i32le(buf: u8[], addr: i32) i32
-        return i32(buf[addr]) | (i32(buf[addr + 1]) << 8) | (i32(buf[addr + 2]) << 16) | (i32(buf[addr + 3]) << 24)
+    fun _read_i32le(buf: byte[], addr: int) int
+        return int(buf[addr]) | (int(buf[addr + 1]) << 8) | (int(buf[addr + 2]) << 16) | (int(buf[addr + 3]) << 24)
 
     @inline
-    fun _write_i32le(buf: u8[], addr: i32, v: i32)
-        buf[addr]     = u8(v)
-        buf[addr + 1] = u8(v >> 8)
-        buf[addr + 2] = u8(v >> 16)
-        buf[addr + 3] = u8(v >> 24)
+    fun _write_i32le(buf: byte[], addr: int, v: int)
+        buf[addr]     = byte(v)
+        buf[addr + 1] = byte(v >> 8)
+        buf[addr + 2] = byte(v >> 16)
+        buf[addr + 3] = byte(v >> 24)
 
     @inline
-    fun _read_u16(code: u8[], pc: i32) i32
-        return i32(code[pc]) | (i32(code[pc + 1]) << 8)
+    fun _read_u16(code: byte[], pc: int) int
+        return int(code[pc]) | (int(code[pc + 1]) << 8)
 
     // ── Error handling ────────────────────────────────────────────────────────
 
@@ -353,7 +353,7 @@ class VM()
     fun _on_error(code: VmError)
         _last_error = VmError.NONE
         _print_error_msg(code)
-        val saved: u8[] = _sys_code
+        val saved: byte[] = _sys_code
         reset()
         if saved.size() > 0
             _sys_code = saved
@@ -363,9 +363,9 @@ class VM()
 
     fun _run_execute(task: &Task, which: Code)
         _current_code = which
-        val code: u8[] = _code(which)
-        val data: u8[] = _data(which)
-        var pc: i32 = task.pc
+        val code: byte[] = _code(which)
+        val data: byte[] = _data(which)
+        var pc: int = task.pc
         task.state = TaskState.RUNNING
 
         while task.state == TaskState.RUNNING
@@ -376,7 +376,7 @@ class VM()
             if pc >= code.size
                 task.state = TaskState.FINISHED
                 continue
-            val op: i32 = i32(code[pc])
+            val op: int = int(code[pc])
             pc++
 
             match op
@@ -384,54 +384,54 @@ class VM()
                     task.push(_read_i32le(code, pc))
                     pc += 4
                 OpCode.LoadGlobal:
-                    val addr: i32 = _read_u16(code, pc)
+                    val addr: int = _read_u16(code, pc)
                     pc += 2
                     task.push(_read_i32le(data, addr))
                 OpCode.StoreGlobal:
-                    val addr: i32 = _read_u16(code, pc)
+                    val addr: int = _read_u16(code, pc)
                     pc += 2
                     _write_i32le(data, addr, task.pop())
                 OpCode.LoadGlobalInd:
                     task.push(_read_i32le(data, task.pop()))
                 OpCode.StoreGlobalInd:
-                    val addr: i32 = task.pop()
+                    val addr: int = task.pop()
                     _write_i32le(data, addr, task.pop())
                 OpCode.LoadReg:
-                    val slot: i32 = i32(code[pc])
+                    val slot: int = int(code[pc])
                     pc++
                     task.push(task.regs[slot])
                 OpCode.StoreReg:
-                    val slot: i32 = i32(code[pc])
+                    val slot: int = int(code[pc])
                     pc++
                     task.regs[slot] = task.pop()
                 OpCode.Dup:
                     task.push(task.peek())
                 OpCode.Swap:
-                    val top: i32 = task.pop()
-                    val sec: i32 = task.pop()
+                    val top: int = task.pop()
+                    val sec: int = task.pop()
                     task.push(top)
                     task.push(sec)
                 OpCode.Drop:
                     task.pop()
                 OpCode.AddInt:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push(task.pop() + b)
                 OpCode.SubInt:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push(task.pop() - b)
                 OpCode.MulInt:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push(task.pop() * b)
                 OpCode.DivInt:
-                    val b: i32 = task.pop()
-                    val a: i32 = task.pop()
+                    val b: int = task.pop()
+                    val a: int = task.pop()
                     if b != 0
                         task.push(a / b)
                     else
                         task.push(0)
                 OpCode.ModInt:
-                    val b: i32 = task.pop()
-                    val a: i32 = task.pop()
+                    val b: int = task.pop()
+                    val a: int = task.pop()
                     if b != 0
                         task.push(a % b)
                     else
@@ -439,40 +439,40 @@ class VM()
                 OpCode.NegInt:
                     task.push(-task.pop())
                 OpCode.ShlInt:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push(task.pop() << b)
                 OpCode.ShrInt:
-                    val b: i32 = task.pop()
-                    task.push(i32(u32(task.pop()) >> u32(b)))
+                    val b: int = task.pop()
+                    task.push(int(u32(task.pop()) >> u32(b)))
                 OpCode.SarInt:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push(task.pop() >> b)
                 OpCode.And:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push(task.pop() & b)
                 OpCode.Or:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push(task.pop() | b)
                 OpCode.Xor:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push(task.pop() ^ b)
                 OpCode.Not:
                     task.push(~task.pop())
                 OpCode.AddFixed:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push(task.pop() + b)
                 OpCode.SubFixed:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push(task.pop() - b)
                 OpCode.MulFixed:
-                    val b: i32 = task.pop()
-                    val a: i32 = task.pop()
-                    task.push(i32((i64(a) * i64(b)) >> 16))
+                    val b: int = task.pop()
+                    val a: int = task.pop()
+                    task.push(int((i64(a) * i64(b)) >> 16))
                 OpCode.DivFixed:
-                    val b: i32 = task.pop()
-                    val a: i32 = task.pop()
+                    val b: int = task.pop()
+                    val a: int = task.pop()
                     if b != 0
-                        task.push(i32((i64(a) << 16) / i64(b)))
+                        task.push(int((i64(a) << 16) / i64(b)))
                     else
                         task.push(0)
                 OpCode.NegFixed:
@@ -482,57 +482,57 @@ class VM()
                 OpCode.FixedToInt:
                     task.push(task.pop() >> 16)
                 OpCode.CmpEqInt:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push_bool(task.pop() == b)
                 OpCode.CmpNeInt:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push_bool(task.pop() != b)
                 OpCode.CmpLtInt:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push_bool(task.pop() < b)
                 OpCode.CmpLeInt:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push_bool(task.pop() <= b)
                 OpCode.CmpGtInt:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push_bool(task.pop() > b)
                 OpCode.CmpGeInt:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push_bool(task.pop() >= b)
                 OpCode.CmpEqFixed:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push_bool(task.pop() == b)
                 OpCode.CmpNeFixed:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push_bool(task.pop() != b)
                 OpCode.CmpLtFixed:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push_bool(task.pop() < b)
                 OpCode.CmpLeFixed:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push_bool(task.pop() <= b)
                 OpCode.CmpGtFixed:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push_bool(task.pop() > b)
                 OpCode.CmpGeFixed:
-                    val b: i32 = task.pop()
+                    val b: int = task.pop()
                     task.push_bool(task.pop() >= b)
                 OpCode.Jmp:
                     pc = _read_u16(code, pc)
                 OpCode.JmpIfTrue:
-                    val addr: i32 = _read_u16(code, pc)
+                    val addr: int = _read_u16(code, pc)
                     pc += 2
                     if task.pop() != 0
                         pc = addr
                 OpCode.JmpIfFalse:
-                    val addr: i32 = _read_u16(code, pc)
+                    val addr: int = _read_u16(code, pc)
                     pc += 2
                     if task.pop() == 0
                         pc = addr
                 OpCode.Call:
-                    val addr: i32 = _read_u16(code, pc)
+                    val addr: int = _read_u16(code, pc)
                     pc += 2
-                    val argc: i32 = i32(code[pc])
+                    val argc: int = int(code[pc])
                     pc++
                     task.fp_stack[task.frame]  = task.fp
                     task.ret_stack[task.frame] = pc
@@ -545,38 +545,38 @@ class VM()
                     else
                         pc = addr
                 OpCode.Ret:
-                    val retval: i32 = task.pop()
+                    val retval: int = task.pop()
                     task.frame = task.frame - 1
                     task.sp = task.sp_stack[task.frame]
                     task.fp = task.fp_stack[task.frame]
                     pc      = task.ret_stack[task.frame]
                     task.push(retval)
                 OpCode.Reserve:
-                    val n: i32 = i32(code[pc])
+                    val n: int = int(code[pc])
                     pc++
-                    var ri: i32 = 0
+                    var ri: int = 0
                     while ri < n
                         task.push(0)
                         ri++
                 OpCode.LoadLocal:
-                    val slot: i32 = i32(code[pc])
+                    val slot: int = int(code[pc])
                     pc++
                     task.push(task.stack[task.fp + slot])
                 OpCode.StoreLocal:
-                    val slot: i32 = i32(code[pc])
+                    val slot: int = int(code[pc])
                     pc++
                     task.stack[task.fp + slot] = task.pop()
                 OpCode.CallModule:
-                    val mod_id: u8 = code[pc]
+                    val mod_id: byte = code[pc]
                     pc++
-                    val sub: u8 = code[pc]
+                    val sub: byte = code[pc]
                     pc++
-                    val slot: i32 = i32(_module_slots[mod_id])
+                    val slot: int = int(_module_slots[mod_id])
                     if slot == 0
                         _last_error = VmError.BAD_MODULE
                         task.state = TaskState.FINISHED
                     else
-                        val fn: fun(u8, &Task) = _module_fns[slot - 1]
+                        val fn: fun(byte, &Task) = _module_fns[slot - 1]
                         fn(sub, task)
                 _:
                     _last_error = VmError.BAD_OPCODE
@@ -590,8 +590,8 @@ var vm: VM
 
 // ── Built-in module handlers ──────────────────────────────────────────────────
 
-fun _console_handler(sub: u8, task: &Task)
-    match i32(sub)
+fun _console_handler(sub: byte, task: &Task)
+    match int(sub)
         ConsoleCode.PrintBool:
             console.write_bool(task.pop() != 0)
         ConsoleCode.PrintInt:
@@ -599,22 +599,22 @@ fun _console_handler(sub: u8, task: &Task)
         ConsoleCode.PrintFixed:
             console.write_fixed(task.pop())
         ConsoleCode.PrintStr:
-            val packed: i32 = task.pop()
-            val str_addr: i32 = packed & 0xFFFF
-            val str_len: i32 = (packed >> 16) & 0xFFFF
-            val code: u8[] = vm._code(vm._current_code)
-            var i: i32 = 0
+            val packed: int = task.pop()
+            val str_addr: int = packed & 0xFFFF
+            val str_len: int = (packed >> 16) & 0xFFFF
+            val code: byte[] = vm._code(vm._current_code)
+            var i: int = 0
             while i < str_len
                 console.write_byte(code[str_addr + i])
                 i++
         _:
             vm.on_module_error(task)
 
-fun _signal_module(sub: u8, task: &Task)
-    match i32(sub)
+fun _signal_module(sub: byte, task: &Task)
+    match int(sub)
         SignalCode.CreateHandler:
-            val ha: i32 = task.pop()
-            val he: i32 = task.pop()
+            val ha: int = task.pop()
+            val he: int = task.pop()
             val handler: &Handler = vm._spawn_handler()
             if handler != null
                 handler.init(he, ha)
@@ -633,10 +633,10 @@ fun _signal_module(sub: u8, task: &Task)
 fun vm_reset()
     vm.reset()
 
-fun vm_load_sys(code: u8[])
+fun vm_load_sys(code: byte[])
     vm.load_sys(code)
 
-fun vm_load_app(code: u8[])
+fun vm_load_app(code: byte[])
     vm.load_app(code)
 
 fun vm_boot_sys()
@@ -645,10 +645,10 @@ fun vm_boot_sys()
 fun vm_boot_app()
     vm.boot_app()
 
-fun vm_send(id: i32, param0: i32, param1: i32, param2: i32, param3: i32)
+fun vm_send(id: int, param0: int, param1: int, param2: int, param3: int)
     vm.emit_signal(id, param0, param1, param2, param3)
 
-fun vm_tick(delta_raw: i32)
+fun vm_tick(delta_raw: int)
     vm.tick(delta_raw)
 
 fun vm_exit_requested() bool

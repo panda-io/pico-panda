@@ -25,50 +25,50 @@ import boot::boot_program
 // ── Module-level buffers (kept off the stack) ─────────────────────────────────
 
 var _cfg:      PpdConfig
-var _run_buf:  u8[MAX_CODE]
-var _src_buf:  u8[65536]    // combined source for compilation
+var _run_buf:  byte[MAX_CODE]
+var _src_buf:  byte[65536]    // combined source for compilation
 var _compiler: Compiler
 
 // ── File map (for error location reporting) ───────────────────────────────────
 
-var _fm_starts: i32[33]   // global start line for each file (index 0 = boot)
-var _fm_count:  i32 = 0
+var _fm_starts: int[33]   // global start line for each file (index 0 = boot)
+var _fm_count:  int = 0
 
 // Count newlines in _src_buf[start..start+len].
-fun _count_nl(start: i32, len: i32) i32
-    var c: i32 = 0
-    var j: i32 = 0
+fun _count_nl(start: int, len: int) int
+    var c: int = 0
+    var j: int = 0
     while j < len
-        if _src_buf[start + j] == u8(10)
+        if _src_buf[start + j] == byte(10)
             c++
         j++
     return c
 
 // Error location callback: translates global line → "filename:local_line: ".
-fun _error_loc(line: i32)
-    var fi: i32 = 0
-    var i: i32 = 1
+fun _error_loc(line: int)
+    var fi: int = 0
+    var i: int = 1
     while i < _fm_count
         if _fm_starts[i] <= line
             fi = i
         i++
-    val local_line: i32 = line - _fm_starts[fi] + 1
+    val local_line: int = line - _fm_starts[fi] + 1
     if fi == 0
         write_string("<boot>:")
     else
         write_string(_cfg.src(fi - 1))
         write_string(":")
-    write_i32(local_line)
+    write_int(local_line)
     write_string(": ")
 
 // ── Compile command ───────────────────────────────────────────────────────────
 
 // Read file into _src_buf at offset; returns bytes read, or -1 on open error.
-fun _read_into_src(path: u8[], offset: i32, remaining: i32) i32
+fun _read_into_src(path: byte[], offset: int, remaining: int) int
     var f: File
     if !f.open(path, READ)
         return -1
-    val n: i32 = f.read_bytes({&_src_buf[offset], remaining})
+    val n: int = f.read_bytes({&_src_buf[offset], remaining})
     f.close()
     return n
 
@@ -80,7 +80,7 @@ fun _cmd_compile()
         write_string("error: 'ppd.cfg' must define 'src' and 'output'\n")
         return
 
-    var i: i32 = 0
+    var i: int = 0
     while i < _cfg.src_count()
         if !ends_with(_cfg.src(i), ".ppd")
             write_string("error: only *.ppd supported: ")
@@ -99,51 +99,51 @@ fun _cmd_compile()
         i++
 
     // Build combined source: boot.ppd + lib files (with @module markers) + src files
-    var pos: i32 = 0
-    val buf_end: i32 = 65536
+    var pos: int = 0
+    val buf_end: int = 65536
     _fm_count = 0
-    var cur_line: i32 = 1
+    var cur_line: int = 1
 
     // Prepend boot program (no module context)
     _fm_starts[0] = cur_line
     _fm_count = 1
-    var k: i32 = 0
+    var k: int = 0
     while k < boot_program.size() && pos + k < buf_end
         _src_buf[pos + k] = boot_program[k]
         k++
     pos = pos + k
-    _src_buf[pos] = u8(10)
+    _src_buf[pos] = byte(10)
     pos++
     cur_line = cur_line + _count_nl(0, k) + 1
 
     // Append each lib file preceded by "@module libname\n"
-    var n: i32 = 0
+    var n: int = 0
     i = 0
     while i < _cfg.lib_count()
         // inject "@module " + libname + "\n"
-        val lib_nm: u8[] = _cfg.lib_name(i)
-        _src_buf[pos]     = u8(64)   // '@'
-        _src_buf[pos + 1] = u8(109)  // 'm'
-        _src_buf[pos + 2] = u8(111)  // 'o'
-        _src_buf[pos + 3] = u8(100)  // 'd'
-        _src_buf[pos + 4] = u8(117)  // 'u'
-        _src_buf[pos + 5] = u8(108)  // 'l'
-        _src_buf[pos + 6] = u8(101)  // 'e'
-        _src_buf[pos + 7] = u8(32)   // ' '
+        val lib_nm: byte[] = _cfg.lib_name(i)
+        _src_buf[pos]     = byte(64)   // '@'
+        _src_buf[pos + 1] = byte(109)  // 'm'
+        _src_buf[pos + 2] = byte(111)  // 'o'
+        _src_buf[pos + 3] = byte(100)  // 'd'
+        _src_buf[pos + 4] = byte(117)  // 'u'
+        _src_buf[pos + 5] = byte(108)  // 'l'
+        _src_buf[pos + 6] = byte(101)  // 'e'
+        _src_buf[pos + 7] = byte(32)   // ' '
         pos = pos + 8
-        var mi: i32 = 0
+        var mi: int = 0
         while mi < lib_nm.size() && pos < buf_end
             _src_buf[pos] = lib_nm[mi]
             pos++
             mi++
-        _src_buf[pos] = u8(10)   // '\n'
+        _src_buf[pos] = byte(10)   // '\n'
         pos++
         cur_line++  // the @module line itself
         // register file map entry (after the marker line)
         if _fm_count < 33
             _fm_starts[_fm_count] = cur_line
             _fm_count++
-        val file_start: i32 = pos
+        val file_start: int = pos
         n = _read_into_src(_cfg.lib_path(i), pos, buf_end - pos)
         if n < 0
             write_string("error: cannot open '")
@@ -152,20 +152,20 @@ fun _cmd_compile()
             write_string("\n")
             return
         pos = pos + n
-        _src_buf[pos] = u8(10)
+        _src_buf[pos] = byte(10)
         pos++
         cur_line = cur_line + _count_nl(file_start, n) + 1
         i++
 
     // inject "@module\n" to reset module context before src files
-    _src_buf[pos]     = u8(64)   // '@'
-    _src_buf[pos + 1] = u8(109)  // 'm'
-    _src_buf[pos + 2] = u8(111)  // 'o'
-    _src_buf[pos + 3] = u8(100)  // 'd'
-    _src_buf[pos + 4] = u8(117)  // 'u'
-    _src_buf[pos + 5] = u8(108)  // 'l'
-    _src_buf[pos + 6] = u8(101)  // 'e'
-    _src_buf[pos + 7] = u8(10)   // '\n'
+    _src_buf[pos]     = byte(64)   // '@'
+    _src_buf[pos + 1] = byte(109)  // 'm'
+    _src_buf[pos + 2] = byte(111)  // 'o'
+    _src_buf[pos + 3] = byte(100)  // 'd'
+    _src_buf[pos + 4] = byte(117)  // 'u'
+    _src_buf[pos + 5] = byte(108)  // 'l'
+    _src_buf[pos + 6] = byte(101)  // 'e'
+    _src_buf[pos + 7] = byte(10)   // '\n'
     pos = pos + 8
     cur_line++
 
@@ -175,7 +175,7 @@ fun _cmd_compile()
         if _fm_count < 33
             _fm_starts[_fm_count] = cur_line
             _fm_count++
-        val file_start: i32 = pos
+        val file_start: int = pos
         n = _read_into_src(_cfg.src(i), pos, buf_end - pos)
         if n < 0
             write_string("error: cannot open '")
@@ -184,17 +184,17 @@ fun _cmd_compile()
             write_string("\n")
             return
         pos = pos + n
-        _src_buf[pos] = u8(10)
+        _src_buf[pos] = byte(10)
         pos++
         cur_line = cur_line + _count_nl(file_start, n) + 1
         i++
 
     // Compile
     _compiler.set_error_loc(_error_loc)
-    val src: u8[] = {&_src_buf[0], pos}
+    val src: byte[] = {&_src_buf[0], pos}
     if !_compiler.compile(src)
         write_string("compile error (")
-        write_i32(_compiler.error_count())
+        write_int(_compiler.error_count())
         write_string(" error(s))\n")
         return
 
@@ -211,8 +211,8 @@ fun _cmd_compile()
 
 // ── Run command ───────────────────────────────────────────────────────────────
 
-fun _cmd_run(path: u8[], fps: i32)
-    var run_path: u8[] = path
+fun _cmd_run(path: byte[], fps: int)
+    var run_path: byte[] = path
     if path.size() == 0
         if !_cfg.load("ppd.cfg")
             write_string("error: cannot open 'ppd.cfg'\n")
@@ -228,7 +228,7 @@ fun _cmd_run(path: u8[], fps: i32)
         write_string(run_path)
         write_string("'\n")
         return
-    val n: i32 = f.read_bytes({&_run_buf[0], MAX_CODE})
+    val n: int = f.read_bytes({&_run_buf[0], MAX_CODE})
     f.close()
 
     vm_reset()
@@ -236,7 +236,7 @@ fun _cmd_run(path: u8[], fps: i32)
     vm_boot_sys()
 
     val target_us: i64 = i64(1000000) / i64(fps)
-    val dt: i32 = 1000 * 65536 / fps   // raw 16.16 fixed-point ms per tick
+    val dt: int = 1000 * 65536 / fps   // raw 16.16 fixed-point ms per tick
     catch_signals()
 
     // Deadline-based loop: advance deadline by target_us each tick so
@@ -294,11 +294,11 @@ fun _usage()
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 fun main()
-    val n: i32 = arg_count()
+    val n: int = arg_count()
     if n < 2
         _usage()
         return
-    val cmd: u8[] = arg_value(1)
+    val cmd: byte[] = arg_value(1)
 
     if equals(cmd, "init")
         _cmd_init()
@@ -309,14 +309,14 @@ fun main()
         return
 
     if equals(cmd, "run")
-        var run_arg: u8[] = ""
-        var fps: i32 = 100
+        var run_arg: byte[] = ""
+        var fps: int = 100
         // parse positional file arg and optional -fps N
-        var j: i32 = 2
+        var j: int = 2
         while j < n
-            val a: u8[] = arg_value(j)
+            val a: byte[] = arg_value(j)
             if equals(a, "-fps") && j + 1 < n
-                fps = parse_i32(arg_value(j + 1))
+                fps = parse_int(arg_value(j + 1))
                 j = j + 2
             else if !starts_with(a, "-")
                 run_arg = a

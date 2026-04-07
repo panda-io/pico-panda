@@ -10,46 +10,46 @@ import hosted.file::*
 import hosted.folder::*
 import string::*
 
-const _MAX_SRC:  i32 = 64
-const _MAX_PATH: i32 = 256
-const _MAX_MOD:  i32 = 64    // max module name length
-const _CFG_LINE: i32 = 512
+const _MAX_SRC:  int = 64
+const _MAX_PATH: int = 256
+const _MAX_MOD:  int = 64    // max module name length
+const _CFG_LINE: int = 512
 
 class PpdConfig()
-    var _src:       u8[_MAX_SRC * _MAX_PATH]
-    var _src_lens:  i32[_MAX_SRC]
-    var _src_count: i32 = 0
-    var _lib:       u8[_MAX_SRC * _MAX_PATH]
-    var _lib_lens:  i32[_MAX_SRC]
-    var _lib_names: u8[_MAX_SRC * _MAX_MOD]
-    var _lib_nlen:  i32[_MAX_SRC]
-    var _lib_count: i32 = 0
-    var _output:    u8[_MAX_PATH]
-    var _out_len:   i32 = 0
-    var _line:      u8[_CFG_LINE]
+    var _src:       byte[_MAX_SRC * _MAX_PATH]
+    var _src_lens:  int[_MAX_SRC]
+    var _src_count: int = 0
+    var _lib:       byte[_MAX_SRC * _MAX_PATH]
+    var _lib_lens:  int[_MAX_SRC]
+    var _lib_names: byte[_MAX_SRC * _MAX_MOD]
+    var _lib_nlen:  int[_MAX_SRC]
+    var _lib_count: int = 0
+    var _output:    byte[_MAX_PATH]
+    var _out_len:   int = 0
+    var _line:      byte[_CFG_LINE]
     var _ok:        bool = false
 
     // Extract module name from a file path: "lib/gpio.ppd" → "gpio".
     // Writes into out[], returns number of bytes written.
-    fun _extract_name(path: u8[], out: u8[]) i32
+    fun _extract_name(path: byte[], out: byte[]) int
         // find start: byte after last '/'
-        var start: i32 = 0
-        var i: i32 = 0
+        var start: int = 0
+        var i: int = 0
         while i < path.size()
-            if path[i] == u8(47)   // '/'
+            if path[i] == byte(47)   // '/'
                 start = i + 1
             i++
         // find end: last '.' (strip extension)
-        var end: i32 = path.size()
+        var end: int = path.size()
         i = path.size()
         while i > start
             i--
-            if path[i] == u8(46)   // '.'
+            if path[i] == byte(46)   // '.'
                 end = i
                 break
         // copy start..end
-        val len: i32 = end - start
-        var k: i32 = 0
+        val len: int = end - start
+        var k: int = 0
         while k < len && k < out.size()
             out[k] = path[start + k]
             k++
@@ -57,24 +57,24 @@ class PpdConfig()
 
     // Scan a folder for *.ppd files and add each as a source entry.
     // Path must end with '/'.
-    fun _scan_folder(folder: u8[])
+    fun _scan_folder(folder: byte[])
         var dir: Folder
         if !dir.open(folder)
             return
-        var name_buf: u8[256]
-        var n: i32 = dir.next({&name_buf[0], 256})
+        var name_buf: byte[256]
+        var n: int = dir.next({&name_buf[0], 256})
         while n > 0
-            val name: u8[] = {&name_buf[0], n}
+            val name: byte[] = {&name_buf[0], n}
             if ends_with(name, ".ppd")
                 // build full path: folder + name
-                var path_buf: u8[_MAX_PATH]
-                var pi: i32 = 0
-                var fi: i32 = 0
+                var path_buf: byte[_MAX_PATH]
+                var pi: int = 0
+                var fi: int = 0
                 while fi < folder.size() && pi < _MAX_PATH - 1
                     path_buf[pi] = folder[fi]
                     fi++
                     pi++
-                var ni: i32 = 0
+                var ni: int = 0
                 while ni < n && pi < _MAX_PATH - 1
                     path_buf[pi] = name[ni]
                     ni++
@@ -84,23 +84,23 @@ class PpdConfig()
         dir.close()
 
     // Scan a folder for *.ppd lib files (module name = filename without extension).
-    fun _scan_lib_folder(folder: u8[])
+    fun _scan_lib_folder(folder: byte[])
         var dir: Folder
         if !dir.open(folder)
             return
-        var name_buf: u8[256]
-        var n: i32 = dir.next({&name_buf[0], 256})
+        var name_buf: byte[256]
+        var n: int = dir.next({&name_buf[0], 256})
         while n > 0
-            val name: u8[] = {&name_buf[0], n}
+            val name: byte[] = {&name_buf[0], n}
             if ends_with(name, ".ppd")
-                var path_buf: u8[_MAX_PATH]
-                var pi: i32 = 0
-                var fi: i32 = 0
+                var path_buf: byte[_MAX_PATH]
+                var pi: int = 0
+                var fi: int = 0
                 while fi < folder.size() && pi < _MAX_PATH - 1
                     path_buf[pi] = folder[fi]
                     fi++
                     pi++
-                var ni: i32 = 0
+                var ni: int = 0
                 while ni < n && pi < _MAX_PATH - 1
                     path_buf[pi] = name[ni]
                     ni++
@@ -109,42 +109,42 @@ class PpdConfig()
             n = dir.next({&name_buf[0], 256})
         dir.close()
 
-    fun _add_src(s: u8[])
+    fun _add_src(s: byte[])
         if _src_count >= _MAX_SRC
             return
-        val base: i32 = _src_count * _MAX_PATH
-        var n: i32 = s.size()
+        val base: int = _src_count * _MAX_PATH
+        var n: int = s.size()
         if n >= _MAX_PATH
             n = _MAX_PATH - 1
-        var j: i32 = 0
+        var j: int = 0
         while j < n
             _src[base + j] = s[j]
             j++
         _src_lens[_src_count] = n
         _src_count++
 
-    fun _add_lib(s: u8[])
+    fun _add_lib(s: byte[])
         if _lib_count >= _MAX_SRC
             return
-        val base: i32 = _lib_count * _MAX_PATH
-        var n: i32 = s.size()
+        val base: int = _lib_count * _MAX_PATH
+        var n: int = s.size()
         if n >= _MAX_PATH
             n = _MAX_PATH - 1
-        var j: i32 = 0
+        var j: int = 0
         while j < n
             _lib[base + j] = s[j]
             j++
         _lib_lens[_lib_count] = n
-        val nm_base: i32 = _lib_count * _MAX_MOD
-        val nm_len: i32 = _extract_name(s, {&_lib_names[nm_base], _MAX_MOD})
+        val nm_base: int = _lib_count * _MAX_MOD
+        val nm_len: int = _extract_name(s, {&_lib_names[nm_base], _MAX_MOD})
         _lib_nlen[_lib_count] = nm_len
         _lib_count++
 
-    fun _set_output(s: u8[])
-        var n: i32 = s.size()
+    fun _set_output(s: byte[])
+        var n: int = s.size()
         if n >= _MAX_PATH
             n = _MAX_PATH - 1
-        var j: i32 = 0
+        var j: int = 0
         while j < n
             _output[j] = s[j]
             j++
@@ -152,34 +152,34 @@ class PpdConfig()
 
     // Returns true if the file was opened; false otherwise.
     // Call valid() after load() to check that required keys were found.
-    fun load(path: u8[]) bool
+    fun load(path: byte[]) bool
         _src_count = 0
         _out_len   = 0
         _ok        = false
         var f: File
         if !f.open(path, READ)
             return false
-        var line_buf: u8[] = {&_line[0], _CFG_LINE}
+        var line_buf: byte[] = {&_line[0], _CFG_LINE}
         while true
-            val n: i32 = f.read_line(line_buf)
+            val n: int = f.read_line(line_buf)
             if n == 0
                 break
-            val raw: u8[] = {&_line[0], n}
-            val ci: i32 = index_of(raw, u8(35))         // '#'
-            var stripped: u8[]
+            val raw: byte[] = {&_line[0], n}
+            val ci: int = index_of(raw, byte(35))         // '#'
+            var stripped: byte[]
             if ci >= 0
                 stripped = sub(raw, 0, ci)
             else
                 stripped = raw
-            val line: u8[] = trim(stripped)
+            val line: byte[] = trim(stripped)
             if line.size() == 0
                 continue
-            val eq: i32 = index_of(line, u8(61))        // '='
+            val eq: int = index_of(line, byte(61))        // '='
             if eq < 0
                 continue
-            val key: u8[] = trim(sub(line, 0, eq))
-            val vstart: i32 = eq + 1
-            val value: u8[] = trim(sub(line, vstart, line.size() - vstart))
+            val key: byte[] = trim(sub(line, 0, eq))
+            val vstart: int = eq + 1
+            val value: byte[] = trim(sub(line, vstart, line.size() - vstart))
             if value.size() == 0
                 continue
             if equals(key, "src")
@@ -202,24 +202,24 @@ class PpdConfig()
     fun valid() bool
         return _ok
 
-    fun src_count() i32
+    fun src_count() int
         return _src_count
 
-    fun src(i: i32) u8[]
-        val base: i32 = i * _MAX_PATH
+    fun src(i: int) byte[]
+        val base: int = i * _MAX_PATH
         return {&_src[base], _src_lens[i]}
 
-    fun lib_count() i32
+    fun lib_count() int
         return _lib_count
 
-    fun lib_path(i: i32) u8[]
-        val base: i32 = i * _MAX_PATH
+    fun lib_path(i: int) byte[]
+        val base: int = i * _MAX_PATH
         return {&_lib[base], _lib_lens[i]}
 
-    fun lib_name(i: i32) u8[]
-        val base: i32 = i * _MAX_MOD
+    fun lib_name(i: int) byte[]
+        val base: int = i * _MAX_MOD
         return {&_lib_names[base], _lib_nlen[i]}
 
-    fun output() u8[]
+    fun output() byte[]
         return {&_output[0], _out_len}
 

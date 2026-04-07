@@ -1,11 +1,11 @@
 import vm.task::REGISTER_SIZE
 
 // ── System signal IDs (shared between assembler and host) ─────────────────────
-const SIGNAL_SYS_START: i32 = 1
-const SIGNAL_APP_START: i32 = 2
-const SIGNAL_TICK:      i32 = 3
-const SIGNAL_EXIT:      i32 = 99
+const SIGNAL_SYS_START: int = 1
+const SIGNAL_APP_START: int = 2
+const SIGNAL_TICK:      int = 3
+const SIGNAL_EXIT:      int = 99
 
 class Signal()
-    var id:   i32
-    var regs: i32[REGISTER_SIZE]
+    var id:   int
+    var regs: int[REGISTER_SIZE]

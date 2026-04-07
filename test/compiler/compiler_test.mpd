@@ -20,23 +20,23 @@ import string::sub
 
 // ── Output capture ────────────────────────────────────────────────────────────
 
-var _out_buf: u8[256]
-var _out_len: i32 = 0
+var _out_buf: byte[256]
+var _out_len: int = 0
 
-fun _cap(b: u8)
+fun _cap(b: byte)
     if _out_len < 256
         _out_buf[_out_len] = b
         _out_len++
 
-fun _out() u8[]
+fun _out() byte[]
     return {&_out_buf[0], _out_len}
 
 @include("stdio.h")
 
 @extern("putchar({b})")
-fun _putchar(b: u8)
+fun _putchar(b: byte)
 
-fun _stdout_write(b: u8)
+fun _stdout_write(b: byte)
     _putchar(b)
 
 // ── Scanner tests ─────────────────────────────────────────────────────────────
@@ -75,8 +75,8 @@ fun test_scan_string_intern()
     sc.init(&heap, "var abc: int\nvar abc: int\n")
     assert(sc.scan())
     // IDENT "abc" appears twice — should get the same string index
-    val si1: i32 = sc.tok_val(1)   // tokens: VAR IDENT COLON INT NEWLINE ...
-    val si2: i32 = sc.tok_val(6)   // second VAR IDENT...
+    val si1: int = sc.tok_val(1)   // tokens: VAR IDENT COLON INT NEWLINE ...
+    val si2: int = sc.tok_val(6)   // second VAR IDENT...
     assert(si1 == si2)
 
 // ── Parser tests ──────────────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ fun add(a: int, b: int) int
     p.init(&heap, &sc)
     assert(p.parse())
     assert(p.decls().count() == 1)
-    assert(p.decls().kind(0) == i32(DeclKind.FUN))
+    assert(p.decls().kind(0) == int(DeclKind.FUN))
 
 // ── Compiler smoke tests ──────────────────────────────────────────────────────
 
@@ -258,7 +258,7 @@ var bad: int[] = [1, 2.5, 3]
 fun test_e2e_array_lit()
     // Compile with inline print_int to verify element values at runtime.
     var c: Compiler
-    val src: u8[] = """
+    val src: byte[] = """
 fun print_int(v: int)
     asm("LOAD_LOCAL v")
     asm("CALL_MODULE CONSOLE PRINT_INT")
@@ -275,7 +275,7 @@ fun on_start()
     assert(asmblr.pass1_str(c.asm_output()))
     asmblr.reset_pc()
     assert(asmblr.pass2_str(c.asm_output()))
-    val bc: u8[] = asmblr.get_bytecode()
+    val bc: byte[] = asmblr.get_bytecode()
     _out_len = 0
     console.init(_cap)
     vm_reset()
@@ -366,12 +366,12 @@ fun on_timer()
 """))
 
 // Return the byte offset of needle in haystack, or -1 if not found.
-fun _find_str(hay: u8[], needle: u8[]) i32
-    val hlen: i32 = hay.size()
-    val nlen: i32 = needle.size()
+fun _find_str(hay: byte[], needle: byte[]) int
+    val hlen: int = hay.size()
+    val nlen: int = needle.size()
     if nlen == 0 || nlen > hlen
         return -1
-    var i: i32 = 0
+    var i: int = 0
     while i <= hlen - nlen
         if starts_with(sub(hay, i, hlen - i), needle)
             return i
@@ -381,7 +381,7 @@ fun _find_str(hay: u8[], needle: u8[]) i32
 @test
 fun test_compile_priority_ordering()
     var c: Compiler
-    val src: u8[] = """
+    val src: byte[] = """
 @tick(1, 10)
 fun high()
     asm("CALL_MODULE SIGNAL EXIT_HANDLER")
@@ -390,9 +390,9 @@ fun low()
     asm("CALL_MODULE SIGNAL EXIT_HANDLER")
 """
     assert(c.compile(src))
-    val out: u8[] = c.asm_output()
-    val pos_high: i32 = _find_str(out, "__wrap_high")
-    val pos_low:  i32 = _find_str(out, "__wrap_low")
+    val out: byte[] = c.asm_output()
+    val pos_high: int = _find_str(out, "__wrap_high")
+    val pos_low:  int = _find_str(out, "__wrap_low")
     assert(pos_high >= 0)
     assert(pos_low >= 0)
     assert(pos_high < pos_low)
@@ -400,7 +400,7 @@ fun low()
 @test
 fun test_compile_priority_equal_stable()
     var c: Compiler
-    val src: u8[] = """
+    val src: byte[] = """
 @tick(1)
 fun first()
     asm("CALL_MODULE SIGNAL EXIT_HANDLER")
@@ -409,24 +409,24 @@ fun second()
     asm("CALL_MODULE SIGNAL EXIT_HANDLER")
 """
     assert(c.compile(src))
-    val out: u8[] = c.asm_output()
-    val pos_first:  i32 = _find_str(out, "__wrap_first")
-    val pos_second: i32 = _find_str(out, "__wrap_second")
+    val out: byte[] = c.asm_output()
+    val pos_first:  int = _find_str(out, "__wrap_first")
+    val pos_second: int = _find_str(out, "__wrap_second")
     assert(pos_first >= 0 && pos_second >= 0)
     assert(pos_first < pos_second)
 
 @test
 fun test_negative_priority_stored()
     var c: Compiler
-    val src: u8[] = """
+    val src: byte[] = """
 @tick(1, -5)
 fun neg5()
     asm("CALL_MODULE SIGNAL EXIT_HANDLER")
 """
     assert(c.compile(src))
     val decls: &DeclList = c.parser().decls()
-    var found_pri: i32 = 9999
-    var i: i32 = 0
+    var found_pri: int = 9999
+    var i: int = 0
     while i < decls.count()
         if decls.ann_kind(i) > 0
             found_pri = decls.ann_priority(i)
@@ -436,7 +436,7 @@ fun neg5()
 @test
 fun test_compile_negative_priority_ordering()
     var c: Compiler
-    val src: u8[] = """
+    val src: byte[] = """
 @tick(1, -1)
 fun neg1()
     asm("CALL_MODULE SIGNAL EXIT_HANDLER")
@@ -445,9 +445,9 @@ fun zero()
     asm("CALL_MODULE SIGNAL EXIT_HANDLER")
 """
     assert(c.compile(src))
-    val out: u8[] = c.asm_output()
-    val pos_zero: i32 = _find_str(out, "__wrap_zero")
-    val pos_neg1: i32 = _find_str(out, "__wrap_neg1")
+    val out: byte[] = c.asm_output()
+    val pos_zero: int = _find_str(out, "__wrap_zero")
+    val pos_neg1: int = _find_str(out, "__wrap_neg1")
     assert(pos_zero >= 0 && pos_neg1 >= 0)
     // zero (priority 0) should appear before neg1 (priority -1)
     assert(pos_zero < pos_neg1)
@@ -462,10 +462,10 @@ fun test_e2e_add()
 fun add(a: int, b: int) int
     return a + b
 """))
-    val fn_asm: u8[] = c.asm_output()
+    val fn_asm: byte[] = c.asm_output()
 
     // main: push 3, push 4, call add, print result, exit
-    val header: u8[] = """
+    val header: byte[] = """
 .code
 fun main:
     PUSH 3
@@ -477,16 +477,16 @@ fun main:
 """
 
     // concatenate header + fn_asm into a fixed buffer
-    var combined: u8[2048]
-    var pos: i32 = 0
-    var i: i32 = 0
-    val hlen: i32 = header.size()
+    var combined: byte[2048]
+    var pos: int = 0
+    var i: int = 0
+    val hlen: int = header.size()
     while i < hlen
         combined[pos] = header[i]
         pos++
         i++
     i = 0
-    val flen: i32 = fn_asm.size()
+    val flen: int = fn_asm.size()
     while i < flen
         combined[pos] = fn_asm[i]
         pos++
@@ -495,11 +495,11 @@ fun main:
     // assemble
     var asmblr: Assembler
     asmblr.init()
-    val src: u8[] = {&combined[0], pos}
+    val src: byte[] = {&combined[0], pos}
     assert(asmblr.pass1_str(src))
     asmblr.reset_pc()
     assert(asmblr.pass2_str(src))
-    val bc: u8[] = asmblr.get_bytecode()
+    val bc: byte[] = asmblr.get_bytecode()
 
     // run via VM, capture output
     _out_len = 0
@@ -523,7 +523,7 @@ var g: Vec2
 fun test_e2e_data_field()
     // Compile: global struct, set field, print via asm, exit via wrapper EXIT_HANDLER.
     var c: Compiler
-    val src: u8[] = """
+    val src: byte[] = """
 fun print_int(v: int)
     asm("LOAD_LOCAL v")
     asm("CALL_MODULE CONSOLE PRINT_INT")
@@ -537,14 +537,14 @@ fun on_start()
     print_int(g_v.x)
 """
     assert(c.compile(src))
-    val asm_text: u8[] = c.asm_output()
+    val asm_text: byte[] = c.asm_output()
 
     var asmblr: Assembler
     asmblr.init()
     assert(asmblr.pass1_str(asm_text))
     asmblr.reset_pc()
     assert(asmblr.pass2_str(asm_text))
-    val bc: u8[] = asmblr.get_bytecode()
+    val bc: byte[] = asmblr.get_bytecode()
 
     _out_len = 0
     console.init(_cap)
@@ -559,7 +559,7 @@ fun on_start()
 fun test_drop_on_unused_call()
     // Calling a value-returning function as a statement must emit DROP to keep stack balanced.
     var c: Compiler
-    val src: u8[] = """
+    val src: byte[] = """
 fun returns_int() int
     asm("PUSH 42")
 @tick(1)
@@ -590,7 +590,7 @@ fun on_start()
 fun test_e2e_for_in_data_array()
     // for pt in pts — loop var is a ref to each element; pt.x / pt.y load via ref.
     var c: Compiler
-    val src: u8[] = """
+    val src: byte[] = """
 fun print_int(v: int)
     asm("LOAD_LOCAL v")
     asm("CALL_MODULE CONSOLE PRINT_INT")
@@ -609,14 +609,14 @@ fun on_start()
         print_int(pt.y)
 """
     assert(c.compile(src))
-    val asm_text: u8[] = c.asm_output()
+    val asm_text: byte[] = c.asm_output()
 
     var asmblr: Assembler
     asmblr.init()
     assert(asmblr.pass1_str(asm_text))
     asmblr.reset_pc()
     assert(asmblr.pass2_str(asm_text))
-    val bc: u8[] = asmblr.get_bytecode()
+    val bc: byte[] = asmblr.get_bytecode()
 
     _out_len = 0
     console.init(_cap)

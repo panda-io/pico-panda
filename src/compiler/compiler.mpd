@@ -16,7 +16,7 @@
 // Usage:
 //   var c: Compiler
 //   if c.compile(src)
-//       val asm: u8[] = c.asm_output()
+//       val asm: byte[] = c.asm_output()
 //       c.write_bytecode("out.ppd")
 
 #if HOSTED
@@ -35,15 +35,15 @@ class Compiler()
     var _parser:       Parser
     var _checker:      Checker
     var _codegen:      Codegen
-    var _errors:       i32 = 0
-    var _err_loc:      fun(i32)
+    var _errors:       int = 0
+    var _err_loc:      fun(int)
     var _has_err_loc:  bool = false
 
-    fun set_error_loc(fn: fun(i32))
+    fun set_error_loc(fn: fun(int))
         _err_loc = fn
         _has_err_loc = true
 
-    fun compile(src: u8[]) bool
+    fun compile(src: byte[]) bool
         _errors = 0
 
         // ── Phase 1: scan ─────────────────────────────────────────────────
@@ -77,16 +77,16 @@ class Compiler()
 
         return true
 
-    fun error_count() i32
+    fun error_count() int
         return _errors
 
     // Return the generated PPasm assembly text.
-    fun asm_output() u8[]
+    fun asm_output() byte[]
         return _codegen.output()
 
     // Assemble the generated PPasm text and write bytecode to out_path.
-    fun write_bytecode(out_path: u8[]) bool
-        val asm_src: u8[] = _codegen.output()
+    fun write_bytecode(out_path: byte[]) bool
+        val asm_src: byte[] = _codegen.output()
         var asmbler: Assembler
         asmbler.init()
         if !asmbler.pass1_str(asm_src)
@@ -94,7 +94,7 @@ class Compiler()
         asmbler.reset_pc()
         if !asmbler.pass2_str(asm_src)
             return false
-        val bc: u8[] = asmbler.get_bytecode()
+        val bc: byte[] = asmbler.get_bytecode()
         var f: File
         if !f.open(out_path, WRITE)
             return false
@@ -107,7 +107,7 @@ class Compiler()
 
 // ── Standalone helpers ────────────────────────────────────────────────────────
 
-fun pp_compile(src: u8[]) bool
+fun pp_compile(src: byte[]) bool
     var c: Compiler
     return c.compile(src)
 #end

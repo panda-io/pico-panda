@@ -9,23 +9,23 @@ import string::equals
 
 // ── Output capture ────────────────────────────────────────────────────────────
 
-var _out_buf: u8[256]
-var _out_len: i32 = 0
+var _out_buf: byte[256]
+var _out_len: int = 0
 
-fun _cap(b: u8)
+fun _cap(b: byte)
     if _out_len < 256
         _out_buf[_out_len] = b
         _out_len++
 
-fun _out() u8[]
+fun _out() byte[]
     return {&_out_buf[0], _out_len}
 
 @include("stdio.h")
 
 @extern("putchar({b})")
-fun _putchar(b: u8)
+fun _putchar(b: byte)
 
-fun _stdout_write(b: u8)
+fun _stdout_write(b: byte)
     _putchar(b)
 
 // ── Shared assembler instance ─────────────────────────────────────────────────
@@ -34,14 +34,14 @@ var _asm: Assembler
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fun _build(src: u8[]) bool
+fun _build(src: byte[]) bool
     _asm.init()
     if !_asm.pass1_str(src)
         return false
     _asm.reset_pc()
     return _asm.pass2_str(src)
 
-fun _boot_sys(src: u8[]) bool
+fun _boot_sys(src: byte[]) bool
     _out_len = 0
     console.init(_cap)
     if !_build(src)
@@ -146,7 +146,7 @@ CALL_MODULE SIGNAL EXIT_HANDLER
 @test
 fun test_asm_forward_label()
     // condition is false → jump to skip → output 99
-    val src: u8[] = """
+    val src: byte[] = """
 PUSH 0
 JMP_IF_FALSE skip
 PUSH 1
@@ -163,7 +163,7 @@ CALL_MODULE SIGNAL EXIT_HANDLER
 @test
 fun test_asm_backward_label()
     // count from 0 up to 10, output 10
-    val src: u8[] = """
+    val src: byte[] = """
 PUSH 0
 loop:
 PUSH 1
@@ -183,7 +183,7 @@ CALL_MODULE SIGNAL EXIT_HANDLER
 @test
 fun test_asm_call_ret()
     // double(21) = 42
-    val src: u8[] = """
+    val src: byte[] = """
 PUSH 0
 CALL double
 CALL_MODULE CONSOLE PRINT_INT
@@ -201,7 +201,7 @@ RET
 
 @test
 fun test_asm_comment()
-    val src: u8[] = """
+    val src: byte[] = """
 ; full-line comment
 PUSH 42  ; inline comment
 CALL_MODULE CONSOLE PRINT_INT
@@ -241,10 +241,10 @@ fun test_asm_error_duplicate_label()
 
 @test
 fun test_asm_global_load_store()
-    // .data: x: i32 at addr 0; store 99, load back, print
-    val src: u8[] = """
+    // .data: x: int at addr 0; store 99, load back, print
+    val src: byte[] = """
 .data
-.global x: i32
+.global x: int
 .code
 PUSH 99
 STORE_GLOBAL x
@@ -258,9 +258,9 @@ CALL_MODULE SIGNAL EXIT_HANDLER
 @test
 fun test_asm_global_indirect()
     // push value then address, STORE_GLOBAL_IND pops addr then val
-    val src: u8[] = """
+    val src: byte[] = """
 .data
-.global x: i32
+.global x: int
 .code
 PUSH 77
 PUSH_ADDR x
@@ -278,7 +278,7 @@ CALL_MODULE SIGNAL EXIT_HANDLER
 @test
 fun test_asm_struct_field()
     // struct Point { x, y }; p.y = 55; load p.y
-    val src: u8[] = """
+    val src: byte[] = """
 .data
 .struct Point
 .field x
@@ -374,10 +374,10 @@ abs_done:
 
 @test
 fun test_asm_array_slice()
-    // arr: i32[4]; arr[2] = 33; load arr[2]
-    val src: u8[] = """
+    // arr: int[4]; arr[2] = 33; load arr[2]
+    val src: byte[] = """
 .data
-.global arr: i32[4]
+.global arr: int[4]
 .code
 PUSH 33
 PUSH_ADDR arr

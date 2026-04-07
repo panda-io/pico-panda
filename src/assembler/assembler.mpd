@@ -6,7 +6,7 @@
 //   PUSH, PUSH_FLOAT, DUP, SWAP, DROP
 //   Integer/fixed arithmetic and comparison
 //   JMP, JMP_IF_TRUE, JMP_IF_FALSE, CALL, RET
-//   CALL_MODULE module_id(u8) sub(u8)
+//   CALL_MODULE module_id(byte) sub(byte)
 //   LOAD_GLOBAL name, STORE_GLOBAL name
 //   LOAD_GLOBAL_IND, STORE_GLOBAL_IND
 //   PUSH_ADDR name             (push data-segment address of global)
@@ -19,7 +19,7 @@
 //   .struct Name               (begin struct definition)
 //   .field fname               (declare 4-byte field)
 //   .end                       (end struct; records size)
-//   .global name: type         (allocate global; type = i32/fixed/bool/StructName/T[N])
+//   .global name: type         (allocate global; type = int/fixed/bool/StructName/T[N])
 //
 // Multi-file: call pass1() for each file, reset_pc(), call pass2() for each file.
 
@@ -30,8 +30,8 @@ import string::*
 import console::*
 import vm.opcode::OpCode
 
-const MAX_BYTECODE: i32 = 65536
-const MAX_LINE:     i32 = 1024
+const MAX_BYTECODE: int = 65536
+const MAX_LINE:     int = 1024
 
 enum AsmPass
     SCAN
@@ -39,33 +39,33 @@ enum AsmPass
 
 class Assembler()
     var _heap:            HeapAllocator
-    var _labels:          HeapMap<i32>
-    var _opcodes:         HeapMap<i32>
-    var _globals:         HeapMap<i32>      // name → data address
-    var _struct_sizes:    HeapMap<i32>      // struct name → byte size
-    var _field_offsets:   HeapMap<i32>      // "StructName.field" → byte offset
-    var _array_slices:    HeapMap<i32>      // array global name → (addr<<16)|count
-    var _locals:          HeapMap<i32>      // local name → slot (rebuilt per fun)
-    var _fun_argc:        HeapMap<i32>      // fun name → argc (pass 1 → pass 2)
-    var _fun_nvars:       HeapMap<i32>      // fun name → callee var count (pass 1 → pass 2)
-    var _modules:         HeapMap<i32>      // module name → module id (e.g. "CONSOLE" → 1)
-    var _subops:          HeapMap<i32>      // "MODULE.SUBOP" → sub-op code
-    var _bytecode:        u8[MAX_BYTECODE]
-    var _line:            u8[MAX_LINE]
-    var _key_buf:         u8[128]           // temp buffer for building field keys
-    var _cur_struct_buf:  u8[64]
-    var _cur_struct:      u8[]
-    var _cur_fun_buf:     u8[64]
-    var _cur_fun:         u8[]
-    var _pool:            u8[MAX_BYTECODE]
-    var _pool_size:       i32 = 0
-    var _instr_size:      i32 = 0
-    var _local_idx:       i32
-    var _var_idx:         i32
-    var _pc:              i32 = 0
-    var _data_size:       i32 = 0
-    var _cur_struct_off:  i32 = 0
-    var _errors:          i32 = 0
+    var _labels:          HeapMap<int>
+    var _opcodes:         HeapMap<int>
+    var _globals:         HeapMap<int>      // name → data address
+    var _struct_sizes:    HeapMap<int>      // struct name → byte size
+    var _field_offsets:   HeapMap<int>      // "StructName.field" → byte offset
+    var _array_slices:    HeapMap<int>      // array global name → (addr<<16)|count
+    var _locals:          HeapMap<int>      // local name → slot (rebuilt per fun)
+    var _fun_argc:        HeapMap<int>      // fun name → argc (pass 1 → pass 2)
+    var _fun_nvars:       HeapMap<int>      // fun name → callee var count (pass 1 → pass 2)
+    var _modules:         HeapMap<int>      // module name → module id (e.g. "CONSOLE" → 1)
+    var _subops:          HeapMap<int>      // "MODULE.SUBOP" → sub-op code
+    var _bytecode:        byte[MAX_BYTECODE]
+    var _line:            byte[MAX_LINE]
+    var _key_buf:         byte[128]           // temp buffer for building field keys
+    var _cur_struct_buf:  byte[64]
+    var _cur_struct:      byte[]
+    var _cur_fun_buf:     byte[64]
+    var _cur_fun:         byte[]
+    var _pool:            byte[MAX_BYTECODE]
+    var _pool_size:       int = 0
+    var _instr_size:      int = 0
+    var _local_idx:       int
+    var _var_idx:         int
+    var _pc:              int = 0
+    var _data_size:       int = 0
+    var _cur_struct_off:  int = 0
+    var _errors:          int = 0
     var _in_data_mode:    bool = false
     var _in_struct:       bool = false
 
@@ -89,112 +89,112 @@ class Assembler()
         _fun_nvars.init(&_heap)
         _modules.init(&_heap)
         _subops.init(&_heap)
-        register_module("CONSOLE", u8(0x01))
-        register_subop("CONSOLE", "PRINT_BOOL",     u8(0x01))
-        register_subop("CONSOLE", "PRINT_INT",      u8(0x02))
-        register_subop("CONSOLE", "PRINT_FIXED",    u8(0x03))
-        register_subop("CONSOLE", "PRINT_STR",      u8(0x04))
-        register_module("SIGNAL",  u8(0x02))
-        register_subop("SIGNAL",  "CREATE_HANDLER", u8(0x01))
-        register_subop("SIGNAL",  "EXIT_HANDLER",   u8(0x02))
-        register_subop("SIGNAL",  "HANDLER_SLEEP",  u8(0x03))
-        register_subop("SIGNAL",  "SEND_SIGNAL",    u8(0x04))
+        register_module("CONSOLE", byte(0x01))
+        register_subop("CONSOLE", "PRINT_BOOL",     byte(0x01))
+        register_subop("CONSOLE", "PRINT_INT",      byte(0x02))
+        register_subop("CONSOLE", "PRINT_FIXED",    byte(0x03))
+        register_subop("CONSOLE", "PRINT_STR",      byte(0x04))
+        register_module("SIGNAL",  byte(0x02))
+        register_subop("SIGNAL",  "CREATE_HANDLER", byte(0x01))
+        register_subop("SIGNAL",  "EXIT_HANDLER",   byte(0x02))
+        register_subop("SIGNAL",  "HANDLER_SLEEP",  byte(0x03))
+        register_subop("SIGNAL",  "SEND_SIGNAL",    byte(0x04))
         _local_idx = 0
         _var_idx   = 0
         _cur_fun   = {null, 0}
-        _opcodes.set("PUSH",             i32(OpCode.Push))
-        _opcodes.set("PUSH_FLOAT",       i32(OpCode.Push))
-        _opcodes.set("PUSH_STR",         i32(OpCode.Push))
-        _opcodes.set("LOAD_LOCAL",       i32(OpCode.LoadLocal))
-        _opcodes.set("STORE_LOCAL",      i32(OpCode.StoreLocal))
-        _opcodes.set("LOAD_GLOBAL",      i32(OpCode.LoadGlobal))
-        _opcodes.set("STORE_GLOBAL",     i32(OpCode.StoreGlobal))
-        _opcodes.set("LOAD_GLOBAL_IND",  i32(OpCode.LoadGlobalInd))
-        _opcodes.set("STORE_GLOBAL_IND", i32(OpCode.StoreGlobalInd))
-        _opcodes.set("LOAD_REG",         i32(OpCode.LoadReg))
-        _opcodes.set("STORE_REG",        i32(OpCode.StoreReg))
-        _opcodes.set("DUP",              i32(OpCode.Dup))
-        _opcodes.set("SWAP",             i32(OpCode.Swap))
-        _opcodes.set("DROP",             i32(OpCode.Drop))
-        _opcodes.set("ADD_INT",          i32(OpCode.AddInt))
-        _opcodes.set("SUB_INT",          i32(OpCode.SubInt))
-        _opcodes.set("MUL_INT",          i32(OpCode.MulInt))
-        _opcodes.set("DIV_INT",          i32(OpCode.DivInt))
-        _opcodes.set("MOD_INT",          i32(OpCode.ModInt))
-        _opcodes.set("NEG_INT",          i32(OpCode.NegInt))
-        _opcodes.set("SHL_INT",          i32(OpCode.ShlInt))
-        _opcodes.set("SHR_INT",          i32(OpCode.ShrInt))
-        _opcodes.set("SAR_INT",          i32(OpCode.SarInt))
-        _opcodes.set("AND",              i32(OpCode.And))
-        _opcodes.set("OR",               i32(OpCode.Or))
-        _opcodes.set("XOR",              i32(OpCode.Xor))
-        _opcodes.set("NOT",              i32(OpCode.Not))
-        _opcodes.set("ADD_FIXED",        i32(OpCode.AddFixed))
-        _opcodes.set("SUB_FIXED",        i32(OpCode.SubFixed))
-        _opcodes.set("MUL_FIXED",        i32(OpCode.MulFixed))
-        _opcodes.set("DIV_FIXED",        i32(OpCode.DivFixed))
-        _opcodes.set("NEG_FIXED",        i32(OpCode.NegFixed))
-        _opcodes.set("INT_TO_FIXED",     i32(OpCode.IntToFixed))
-        _opcodes.set("FIXED_TO_INT",     i32(OpCode.FixedToInt))
-        _opcodes.set("CMP_EQ_INT",       i32(OpCode.CmpEqInt))
-        _opcodes.set("CMP_NE_INT",       i32(OpCode.CmpNeInt))
-        _opcodes.set("CMP_LT_INT",       i32(OpCode.CmpLtInt))
-        _opcodes.set("CMP_LE_INT",       i32(OpCode.CmpLeInt))
-        _opcodes.set("CMP_GT_INT",       i32(OpCode.CmpGtInt))
-        _opcodes.set("CMP_GE_INT",       i32(OpCode.CmpGeInt))
-        _opcodes.set("CMP_EQ_FIXED",     i32(OpCode.CmpEqFixed))
-        _opcodes.set("CMP_NE_FIXED",     i32(OpCode.CmpNeFixed))
-        _opcodes.set("CMP_LT_FIXED",     i32(OpCode.CmpLtFixed))
-        _opcodes.set("CMP_LE_FIXED",     i32(OpCode.CmpLeFixed))
-        _opcodes.set("CMP_GT_FIXED",     i32(OpCode.CmpGtFixed))
-        _opcodes.set("CMP_GE_FIXED",     i32(OpCode.CmpGeFixed))
-        _opcodes.set("JMP",              i32(OpCode.Jmp))
-        _opcodes.set("JMP_IF_TRUE",      i32(OpCode.JmpIfTrue))
-        _opcodes.set("JMP_IF_FALSE",     i32(OpCode.JmpIfFalse))
-        _opcodes.set("CALL",             i32(OpCode.Call))
-        _opcodes.set("RET",              i32(OpCode.Ret))
-        _opcodes.set("CALL_MODULE",      i32(OpCode.CallModule))
+        _opcodes.set("PUSH",             int(OpCode.Push))
+        _opcodes.set("PUSH_FLOAT",       int(OpCode.Push))
+        _opcodes.set("PUSH_STR",         int(OpCode.Push))
+        _opcodes.set("LOAD_LOCAL",       int(OpCode.LoadLocal))
+        _opcodes.set("STORE_LOCAL",      int(OpCode.StoreLocal))
+        _opcodes.set("LOAD_GLOBAL",      int(OpCode.LoadGlobal))
+        _opcodes.set("STORE_GLOBAL",     int(OpCode.StoreGlobal))
+        _opcodes.set("LOAD_GLOBAL_IND",  int(OpCode.LoadGlobalInd))
+        _opcodes.set("STORE_GLOBAL_IND", int(OpCode.StoreGlobalInd))
+        _opcodes.set("LOAD_REG",         int(OpCode.LoadReg))
+        _opcodes.set("STORE_REG",        int(OpCode.StoreReg))
+        _opcodes.set("DUP",              int(OpCode.Dup))
+        _opcodes.set("SWAP",             int(OpCode.Swap))
+        _opcodes.set("DROP",             int(OpCode.Drop))
+        _opcodes.set("ADD_INT",          int(OpCode.AddInt))
+        _opcodes.set("SUB_INT",          int(OpCode.SubInt))
+        _opcodes.set("MUL_INT",          int(OpCode.MulInt))
+        _opcodes.set("DIV_INT",          int(OpCode.DivInt))
+        _opcodes.set("MOD_INT",          int(OpCode.ModInt))
+        _opcodes.set("NEG_INT",          int(OpCode.NegInt))
+        _opcodes.set("SHL_INT",          int(OpCode.ShlInt))
+        _opcodes.set("SHR_INT",          int(OpCode.ShrInt))
+        _opcodes.set("SAR_INT",          int(OpCode.SarInt))
+        _opcodes.set("AND",              int(OpCode.And))
+        _opcodes.set("OR",               int(OpCode.Or))
+        _opcodes.set("XOR",              int(OpCode.Xor))
+        _opcodes.set("NOT",              int(OpCode.Not))
+        _opcodes.set("ADD_FIXED",        int(OpCode.AddFixed))
+        _opcodes.set("SUB_FIXED",        int(OpCode.SubFixed))
+        _opcodes.set("MUL_FIXED",        int(OpCode.MulFixed))
+        _opcodes.set("DIV_FIXED",        int(OpCode.DivFixed))
+        _opcodes.set("NEG_FIXED",        int(OpCode.NegFixed))
+        _opcodes.set("INT_TO_FIXED",     int(OpCode.IntToFixed))
+        _opcodes.set("FIXED_TO_INT",     int(OpCode.FixedToInt))
+        _opcodes.set("CMP_EQ_INT",       int(OpCode.CmpEqInt))
+        _opcodes.set("CMP_NE_INT",       int(OpCode.CmpNeInt))
+        _opcodes.set("CMP_LT_INT",       int(OpCode.CmpLtInt))
+        _opcodes.set("CMP_LE_INT",       int(OpCode.CmpLeInt))
+        _opcodes.set("CMP_GT_INT",       int(OpCode.CmpGtInt))
+        _opcodes.set("CMP_GE_INT",       int(OpCode.CmpGeInt))
+        _opcodes.set("CMP_EQ_FIXED",     int(OpCode.CmpEqFixed))
+        _opcodes.set("CMP_NE_FIXED",     int(OpCode.CmpNeFixed))
+        _opcodes.set("CMP_LT_FIXED",     int(OpCode.CmpLtFixed))
+        _opcodes.set("CMP_LE_FIXED",     int(OpCode.CmpLeFixed))
+        _opcodes.set("CMP_GT_FIXED",     int(OpCode.CmpGtFixed))
+        _opcodes.set("CMP_GE_FIXED",     int(OpCode.CmpGeFixed))
+        _opcodes.set("JMP",              int(OpCode.Jmp))
+        _opcodes.set("JMP_IF_TRUE",      int(OpCode.JmpIfTrue))
+        _opcodes.set("JMP_IF_FALSE",     int(OpCode.JmpIfFalse))
+        _opcodes.set("CALL",             int(OpCode.Call))
+        _opcodes.set("RET",              int(OpCode.Ret))
+        _opcodes.set("CALL_MODULE",      int(OpCode.CallModule))
 
     // ── Byte emit helpers ─────────────────────────────────────────────────────
 
     @inline
-    fun _emit_u8(b: i32)
+    fun _emit_u8(b: int)
         if _pc < MAX_BYTECODE
-            _bytecode[_pc] = u8(b)
+            _bytecode[_pc] = byte(b)
             _pc++
 
     @inline
-    fun _emit_i32le(v: i32)
+    fun _emit_i32le(v: int)
         _emit_u8(v & 0xFF)
         _emit_u8((v >> 8)  & 0xFF)
         _emit_u8((v >> 16) & 0xFF)
         _emit_u8((v >> 24) & 0xFF)
 
     @inline
-    fun _emit_u16le(v: i32)
+    fun _emit_u16le(v: int)
         _emit_u8(v & 0xFF)
         _emit_u8((v >> 8) & 0xFF)
 
     // ── Line helpers ──────────────────────────────────────────────────────────
 
-    fun _strip_comment(string: u8[]) u8[]
+    fun _strip_comment(string: byte[]) byte[]
         var in_str: bool = false
         for i in 0..string.size()
-            val c: u8 = string[i]
+            val c: byte = string[i]
             if in_str
-                if c == u8(92)       // '\' → skip next char
+                if c == byte(92)       // '\' → skip next char
                     i++
-                else if c == u8(34)  // '"' → end of string
+                else if c == byte(34)  // '"' → end of string
                     in_str = false
             else
-                if c == u8(59)       // ';' → comment start
+                if c == byte(59)       // ';' → comment start
                     return trim(sub(string, 0, i))
-                if c == u8(34)       // '"' → start of string
+                if c == byte(34)       // '"' → start of string
                     in_str = true
             i++
         return trim(string)
 
-    fun _append_str_to_pool(s: u8[]) i32
+    fun _append_str_to_pool(s: byte[]) int
         // s is the raw operand "..." including surrounding double-quotes
         // returns the number of bytes written to the pool
         if s.size() < 2
@@ -203,16 +203,16 @@ class Assembler()
         var i := 1                // skip opening '"'
         val end := s.size() - 1   // stop before closing '"'
         while i < end
-            val c: u8 = s[i]
-            if c == u8(92)                 // '\'
+            val c: byte = s[i]
+            if c == byte(92)                 // '\'
                 i++
                 if i < end
-                    val esc: u8 = s[i]
-                    var out: u8 = esc
-                    if esc == u8(110)      // 'n' → newline
-                        out = u8(10)
-                    else if esc == u8(116) // 't' → tab
-                        out = u8(9)
+                    val esc: byte = s[i]
+                    var out: byte = esc
+                    if esc == byte(110)      // 'n' → newline
+                        out = byte(10)
+                    else if esc == byte(116) // 't' → tab
+                        out = byte(9)
                     _pool[_pool_size + n] = out
                     n++
             else
@@ -222,13 +222,13 @@ class Assembler()
         _pool_size = _pool_size + n
         return n
 
-    fun _is_label(line: u8[]) bool
+    fun _is_label(line: byte[]) bool
         if line.size() == 0
             return false
-        return line[line.size() - 1] == u8(58)     // ':'
+        return line[line.size() - 1] == byte(58)     // ':'
 
-    fun _label_name(line: u8[]) u8[]
-        var s: u8[] = line
+    fun _label_name(line: byte[]) byte[]
+        var s: byte[] = line
         if starts_with(s, "fun ")
             s = trim_start(sub(s, 4, s.size() - 4))
         if s.size() > 0
@@ -237,11 +237,11 @@ class Assembler()
 
     // ── Instruction size (pass 1 PC tracking) ─────────────────────────────────
 
-    fun _inst_size(m: u8[]) i32
+    fun _inst_size(m: byte[]) int
         if equals(m, "PUSH") || equals(m, "PUSH_FLOAT") || equals(m, "PUSH_STR")
             return 5
         if equals(m, "PUSH_ADDR") || equals(m, "PUSH_SLICE") || equals(m, "PUSH_FIELD_OFFSET") || equals(m, "PUSH_FUNC")
-            return 5    // emitted as PUSH opcode + i32
+            return 5    // emitted as PUSH opcode + int
         if equals(m, "JMP") || equals(m, "JMP_IF_TRUE") || equals(m, "JMP_IF_FALSE")
             return 3
         if equals(m, "CALL")
@@ -258,61 +258,61 @@ class Assembler()
 
     // ── Hex / integer / fixed-point parsing ───────────────────────────────────
 
-    fun _parse_hex(s: u8[]) i32
-        var result: i32 = 0
+    fun _parse_hex(s: byte[]) int
+        var result: int = 0
         for i in 0..s.size()
-            val c: u8 = s[i]
-            var digit: i32 = 0
-            if c >= u8(48) && c <= u8(57)
-                digit = i32(c) - 48
-            else if c >= u8(65) && c <= u8(70)
-                digit = i32(c) - 55
-            else if c >= u8(97) && c <= u8(102)
-                digit = i32(c) - 87
+            val c: byte = s[i]
+            var digit: int = 0
+            if c >= byte(48) && c <= byte(57)
+                digit = int(c) - 48
+            else if c >= byte(65) && c <= byte(70)
+                digit = int(c) - 55
+            else if c >= byte(97) && c <= byte(102)
+                digit = int(c) - 87
             result = (result << 4) | digit
         return result
 
-    fun _parse_int(s: u8[]) i32
+    fun _parse_int(s: byte[]) int
         if starts_with(s, "0x") || starts_with(s, "0X")
             return _parse_hex(sub(s, 2, s.size() - 2))
         if starts_with(s, "-0x") || starts_with(s, "-0X")
             return -_parse_hex(sub(s, 3, s.size() - 3))
-        return parse_i32(s)
+        return parse_int(s)
 
-    fun _parse_fixed(s: u8[]) i32
+    fun _parse_fixed(s: byte[]) int
         var neg: bool = false
-        var src: u8[] = s
-        if src.size() > 0 && src[0] == u8(45)
+        var src: byte[] = s
+        if src.size() > 0 && src[0] == byte(45)
             neg = true
             src = sub(src, 1, src.size() - 1)
-        val dot: i32 = index_of(src, u8(46))
+        val dot: int = index_of(src, byte(46))
         if dot < 0
-            val r: i32 = parse_i32(src) << 16
+            val r: int = parse_int(src) << 16
             if neg
                 return -r
             return r
-        val int_part: i32 = parse_i32(sub(src, 0, dot))
-        val frac_str: u8[] = sub(src, dot + 1, src.size() - dot - 1)
-        var denom: i32 = 1
+        val int_part: int = parse_int(sub(src, 0, dot))
+        val frac_str: byte[] = sub(src, dot + 1, src.size() - dot - 1)
+        var denom: int = 1
         for j in 0..frac_str.size()
             denom = denom * 10
-        val num: i32 = parse_i32(frac_str)
-        val frac_val: i32 = (num * 65536) / denom
-        val result: i32 = (int_part << 16) + frac_val
+        val num: int = parse_int(frac_str)
+        val frac_val: int = (num * 65536) / denom
+        val result: int = (int_part << 16) + frac_val
         if neg
             return -result
         return result
 
     // ── Opcode lookup ─────────────────────────────────────────────────────────
 
-    fun _opcode(m: u8[]) i32
+    fun _opcode(m: byte[]) int
         if _opcodes.contains(m)
             return _opcodes.get(m)
         return -1
 
     // ── Emit label address helper (pass 2) ────────────────────────────────────
 
-    fun _emit_label(name: u8[])
+    fun _emit_label(name: byte[])
         if _labels.contains(name)
             _emit_u16le(_labels.get(name))
         else
@@ -325,14 +325,14 @@ class Assembler()
 
     // ── Data segment helpers ───────────────────────────────────────────────────
 
-    fun _make_field_key(struct_name: u8[], field_name: u8[]) u8[]
+    fun _make_field_key(struct_name: byte[], field_name: byte[]) byte[]
         var ki := 0
         var si := 0
         while si < struct_name.size() && ki < 127
             _key_buf[ki] = struct_name[si]
             ki++
             si++
-        _key_buf[ki] = u8(46)   // '.'
+        _key_buf[ki] = byte(46)   // '.'
         ki++
         si = 0
         while si < field_name.size() && ki < 127
@@ -341,14 +341,14 @@ class Assembler()
             si++
         return {&_key_buf[0], ki}
 
-    fun _base_type_size(t: u8[]) i32
-        if equals(t, "i32") || equals(t, "fixed") || equals(t, "bool") || equals(t, "u32") || equals(t, "u8")
+    fun _base_type_size(t: byte[]) int
+        if equals(t, "int") || equals(t, "fixed") || equals(t, "bool") || equals(t, "u32") || equals(t, "byte")
             return 4
         if _struct_sizes.contains(t)
             return _struct_sizes.get(t)
         return 4    // unknown type: default 4
 
-    fun _start_struct(name: u8[])
+    fun _start_struct(name: byte[])
         _in_struct = true
         _cur_struct_off = 0
         var si := 0
@@ -357,10 +357,10 @@ class Assembler()
             si++
         _cur_struct = {&_cur_struct_buf[0], si}
 
-    fun _add_field(fname: u8[])
+    fun _add_field(fname: byte[])
         if !_in_struct
             return
-        val key: u8[] = _make_field_key(_cur_struct, fname)
+        val key: byte[] = _make_field_key(_cur_struct, fname)
         _field_offsets.set(key, _cur_struct_off)
         _cur_struct_off = _cur_struct_off + 4
 
@@ -370,24 +370,24 @@ class Assembler()
         _struct_sizes.set(_cur_struct, _cur_struct_off)
         _in_struct = false
 
-    fun _alloc_global(name: u8[], type_str: u8[])
-        val addr: i32 = _data_size
+    fun _alloc_global(name: byte[], type_str: byte[])
+        val addr: int = _data_size
         _globals.set(name, addr)
-        val bracket: i32 = index_of(type_str, u8(91))   // '['
+        val bracket: int = index_of(type_str, byte(91))   // '['
         if bracket >= 0
-            val close: i32 = index_of(type_str, u8(93))     // ']'
-            val dim_str: u8[] = trim(sub(type_str, bracket + 1, close - bracket - 1))
-            val count: i32 = parse_i32(dim_str)
-            val base_type: u8[] = trim(sub(type_str, 0, bracket))
+            val close: int = index_of(type_str, byte(93))     // ']'
+            val dim_str: byte[] = trim(sub(type_str, bracket + 1, close - bracket - 1))
+            val count: int = parse_int(dim_str)
+            val base_type: byte[] = trim(sub(type_str, 0, bracket))
             _array_slices.set(name, (count << 16) | (addr & 0xFFFF))
             _data_size = _data_size + count * _base_type_size(base_type)
         else
             _data_size = _data_size + _base_type_size(type_str)
 
-    fun _handle_directive(line: u8[], pass: AsmPass)
-        val dir: u8[] = token(line, 0, u8(32))
-        val arg_pos := skip(line, dir.size(), u8(32))
-        val args: u8[] = trim(sub(line, arg_pos, line.size() - arg_pos))
+    fun _handle_directive(line: byte[], pass: AsmPass)
+        val dir: byte[] = token(line, 0, byte(32))
+        val arg_pos := skip(line, dir.size(), byte(32))
+        val args: byte[] = trim(sub(line, arg_pos, line.size() - arg_pos))
         if equals(dir, ".data")
             _in_data_mode = true
             _in_struct = false
@@ -417,26 +417,26 @@ class Assembler()
         else if equals(dir, ".end")
             _end_struct()
         else if equals(dir, ".global")
-            val colon: i32 = index_of(args, u8(58))   // ':'
+            val colon: int = index_of(args, byte(58))   // ':'
             if colon >= 0
-                val name: u8[] = trim(sub(args, 0, colon))
-                val type_str: u8[] = trim(sub(args, colon + 1, args.size() - colon - 1))
+                val name: byte[] = trim(sub(args, 0, colon))
+                val type_str: byte[] = trim(sub(args, colon + 1, args.size() - colon - 1))
                 _alloc_global(name, type_str)
 
     // ── Pass 1 / Pass 2 per-line processing ──────────────────────────────────
 
-    fun _pass1_line(line: u8[])
+    fun _pass1_line(line: byte[])
         if line.size() == 0
             return
-        if line[0] == u8(64)        // '@' → skip
+        if line[0] == byte(64)        // '@' → skip
             return
-        if line[0] == u8(46)        // '.'
+        if line[0] == byte(46)        // '.'
             _handle_directive(line, AsmPass.SCAN)
             return
         if _in_data_mode
             return
         if _is_label(line)
-            val name: u8[] = _label_name(line)
+            val name: byte[] = _label_name(line)
             if name.size() > 0
                 if _labels.contains(name)
                     write_string("error: duplicate label '")
@@ -456,15 +456,15 @@ class Assembler()
                     ni++
                 _cur_fun = {&_cur_fun_buf[0], ni}
         else
-            val m: u8[] = token(line, 0, u8(32))
+            val m: byte[] = token(line, 0, byte(32))
             _pc = _pc + _inst_size(m)
 
-    fun _pass2_line(line: u8[])
+    fun _pass2_line(line: byte[])
         if line.size() == 0
             return
-        if line[0] == u8(64)        // '@' → skip
+        if line[0] == byte(64)        // '@' → skip
             return
-        if line[0] == u8(46)        // '.'
+        if line[0] == byte(46)        // '.'
             _handle_directive(line, AsmPass.EMIT)
             return
         if _in_data_mode
@@ -474,21 +474,21 @@ class Assembler()
                 _local_idx = 0
                 _var_idx   = 0
                 _locals.init(&_heap)
-                val name: u8[] = _label_name(line)
+                val name: byte[] = _label_name(line)
                 var ni := 0
                 while ni < name.size() && ni < 64
                     _cur_fun_buf[ni] = name[ni]
                     ni++
                 _cur_fun = {&_cur_fun_buf[0], ni}
-                var nvars: i32 = 0
+                var nvars: int = 0
                 if _fun_nvars.contains(_cur_fun)
                     nvars = _fun_nvars.get(_cur_fun)
                 _emit_u8(OpCode.Reserve)
-                _emit_u8(u8(nvars))
+                _emit_u8(byte(nvars))
             return
-        val m: u8[] = token(line, 0, u8(32))
-        val op_pos := skip(line, m.size(), u8(32))
-        val operand: u8[] = sub(line, op_pos, line.size() - op_pos)
+        val m: byte[] = token(line, 0, byte(32))
+        val op_pos := skip(line, m.size(), byte(32))
+        val operand: byte[] = sub(line, op_pos, line.size() - op_pos)
         if equals(m, "PUSH")
             _emit_u8(_opcode(m))
             _emit_i32le(_parse_int(operand))
@@ -501,24 +501,24 @@ class Assembler()
         else if equals(m, "CALL")
             _emit_u8(OpCode.Call)
             _emit_label(operand)
-            var argc: i32 = 0
+            var argc: int = 0
             if _fun_argc.contains(operand)
                 argc = _fun_argc.get(operand)
-            _emit_u8(u8(argc))
+            _emit_u8(byte(argc))
         else if equals(m, "CALL_MODULE")
-            val id_str: u8[] = token(operand, 0, u8(32))
-            val sub_pos: i32 = skip(operand, id_str.size(), u8(32))
-            val sub_str: u8[] = sub(operand, sub_pos, operand.size() - sub_pos)
+            val id_str: byte[] = token(operand, 0, byte(32))
+            val sub_pos: int = skip(operand, id_str.size(), byte(32))
+            val sub_str: byte[] = sub(operand, sub_pos, operand.size() - sub_pos)
             _emit_u8(_opcode(m))
             if _modules.contains(id_str)
-                _emit_u8(u8(_modules.get(id_str)))
+                _emit_u8(byte(_modules.get(id_str)))
             else
-                _emit_u8(u8(_parse_int(id_str)))
-            val key: u8[] = _make_field_key(id_str, sub_str)
+                _emit_u8(byte(_parse_int(id_str)))
+            val key: byte[] = _make_field_key(id_str, sub_str)
             if _subops.contains(key)
-                _emit_u8(u8(_subops.get(key)))
+                _emit_u8(byte(_subops.get(key)))
             else
-                _emit_u8(u8(_parse_int(sub_str)))
+                _emit_u8(byte(_parse_int(sub_str)))
         else if equals(m, "LOAD_GLOBAL")
             _emit_u8(0x12)
             if _globals.contains(operand)
@@ -561,7 +561,7 @@ class Assembler()
                 _emit_i32le(0)
         else if equals(m, "LOAD_REG") || equals(m, "STORE_REG")
             _emit_u8(_opcode(m))
-            _emit_u8(u8(_parse_int(operand)))
+            _emit_u8(byte(_parse_int(operand)))
         else if equals(m, "PUSH_SLICE")
             _emit_u8(0x01)
             if _array_slices.contains(operand)
@@ -574,10 +574,10 @@ class Assembler()
                 _emit_i32le(0)
         else if equals(m, "PUSH_FIELD_OFFSET")
             _emit_u8(0x01)
-            val type_name: u8[] = token(operand, 0, u8(32))
-            val fn_pos: i32 = skip(operand, type_name.size(), u8(32))
-            val field_name: u8[] = sub(operand, fn_pos, operand.size() - fn_pos)
-            val key: u8[] = _make_field_key(type_name, field_name)
+            val type_name: byte[] = token(operand, 0, byte(32))
+            val fn_pos: int = skip(operand, type_name.size(), byte(32))
+            val field_name: byte[] = sub(operand, fn_pos, operand.size() - fn_pos)
+            val key: byte[] = _make_field_key(type_name, field_name)
             if _field_offsets.contains(key)
                 _emit_i32le(_field_offsets.get(key))
             else
@@ -587,24 +587,24 @@ class Assembler()
                 _errors++
                 _emit_i32le(0)
         else if equals(m, "PUSH_STR")
-            val pool_off: i32 = _pool_size
-            val str_len: i32 = _append_str_to_pool(operand)
+            val pool_off: int = _pool_size
+            val str_len: int = _append_str_to_pool(operand)
             _emit_u8(0x01)
             _emit_i32le((str_len << 16) | (_instr_size + pool_off))
         else if equals(m, "LOAD_LOCAL")
             _emit_u8(0x10)
             if _locals.contains(operand)
-                _emit_u8(u8(_locals.get(operand)))
+                _emit_u8(byte(_locals.get(operand)))
             else
-                _emit_u8(u8(_parse_int(operand)))
+                _emit_u8(byte(_parse_int(operand)))
         else if equals(m, "STORE_LOCAL")
             _emit_u8(0x11)
             if _locals.contains(operand)
-                _emit_u8(u8(_locals.get(operand)))
+                _emit_u8(byte(_locals.get(operand)))
             else
-                _emit_u8(u8(_parse_int(operand)))
+                _emit_u8(byte(_parse_int(operand)))
         else
-            val op: i32 = _opcode(m)
+            val op: int = _opcode(m)
             if op < 0
                 write_string("error: unknown mnemonic '")
                 write_string(m)
@@ -615,25 +615,25 @@ class Assembler()
 
     // ── String line iterator ──────────────────────────────────────────────────
 
-    fun _iter_str(src: u8[], pass: AsmPass) bool
-        var rest: u8[] = src
+    fun _iter_str(src: byte[], pass: AsmPass) bool
+        var rest: byte[] = src
         while rest.size() > 0
-            val nl: i32 = index_of(rest, u8(10))        // '\n'
-            var raw: u8[]
+            val nl: int = index_of(rest, byte(10))        // '\n'
+            var raw: byte[]
             if nl < 0
                 raw  = rest
                 rest = {null, 0}
             else
                 raw  = sub(rest, 0, nl)
                 rest = sub(rest, nl + 1, rest.size() - nl - 1)
-            val line: u8[] = _strip_comment(raw)
+            val line: byte[] = _strip_comment(raw)
             if pass == AsmPass.SCAN
                 _pass1_line(line)
             else
                 _pass2_line(line)
         return _errors == 0
 
-    fun _iter_file(path: u8[], pass: AsmPass) bool
+    fun _iter_file(path: byte[], pass: AsmPass) bool
         var f: File
         if !f.open(path, READ)
             write_string("error: cannot open '")
@@ -641,12 +641,12 @@ class Assembler()
             write_string("\n")
             _errors++
             return false
-        var line_buf: u8[] = {&_line[0], MAX_LINE}
+        var line_buf: byte[] = {&_line[0], MAX_LINE}
         while true
-            val n: i32 = f.read_line(line_buf)
+            val n: int = f.read_line(line_buf)
             if n == 0
                 break
-            val line: u8[] = _strip_comment({&_line[0], n})
+            val line: byte[] = _strip_comment({&_line[0], n})
             if pass == AsmPass.SCAN
                 _pass1_line(line)
             else
@@ -656,10 +656,10 @@ class Assembler()
 
     // ── Pass 1: scan and record label addresses ───────────────────────────────
 
-    fun pass1(path: u8[]) bool
+    fun pass1(path: byte[]) bool
         return _iter_file(path, AsmPass.SCAN)
 
-    fun pass1_str(src: u8[]) bool
+    fun pass1_str(src: byte[]) bool
         return _iter_str(src, AsmPass.SCAN)
 
     // ── Reset PC for pass 2 ───────────────────────────────────────────────────
@@ -677,27 +677,27 @@ class Assembler()
 
     // ── Pass 2: emit bytecode ─────────────────────────────────────────────────
 
-    fun pass2(path: u8[]) bool
+    fun pass2(path: byte[]) bool
         return _iter_file(path, AsmPass.EMIT)
 
-    fun pass2_str(src: u8[]) bool
+    fun pass2_str(src: byte[]) bool
         return _iter_str(src, AsmPass.EMIT)
 
     // ── Output ────────────────────────────────────────────────────────────────
 
-    fun get_bytecode() u8[]
-        var i: i32 = 0
+    fun get_bytecode() byte[]
+        var i: int = 0
         while i < _pool_size
             _bytecode[_instr_size + i] = _pool[i]
             i++
         return {&_bytecode[0], _instr_size + _pool_size}
 
-    fun error_count() i32
+    fun error_count() int
         return _errors
 
-    fun register_module(name: u8[], id: u8)
-        _modules.set(name, i32(id))
+    fun register_module(name: byte[], id: byte)
+        _modules.set(name, int(id))
 
-    fun register_subop(module: u8[], name: u8[], code: u8)
-        val key: u8[] = _make_field_key(module, name)
-        _subops.set(key, i32(code))
+    fun register_subop(module: byte[], name: byte[], code: byte)
+        val key: byte[] = _make_field_key(module, name)
+        _subops.set(key, int(code))

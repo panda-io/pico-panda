@@ -1,7 +1,7 @@
 // ── scanner.mpd ───────────────────────────────────────────────────────────────
 // Pico-Panda lexer.
 //
-// Produces a flat HeapList<i32> of tokens.  Each token occupies 3 consecutive
+// Produces a flat HeapList<int> of tokens.  Each token occupies 3 consecutive
 // slots: [kind, line, value_index].
 //
 //   kind        — TokenKind value
@@ -9,7 +9,7 @@
 //   value_index — index into _strings (for IDENT / LIT_STR),
 //                 or direct int value (for LIT_INT / LIT_FIXED / LIT_TRUE/FALSE)
 //
-// Indentation is tracked with an indent-stack (HeapList<i32> of column widths).
+// Indentation is tracked with an indent-stack (HeapList<int> of column widths).
 // INDENT / DEDENT tokens are injected before the first token of each line.
 // NEWLINE is injected at the end of each logical line.
 
@@ -18,34 +18,34 @@ import hosted.allocator::HeapAllocator
 import hosted.collection::HeapList
 import string::*
 
-const TOK_STRIDE: i32 = 3   // slots per token
+const TOK_STRIDE: int = 3   // slots per token
 
 class Scanner()
     var _heap:    &HeapAllocator
-    var _src:     u8[]
-    var _pos:     i32 = 0
-    var _line:    i32 = 1
-    var _col:     i32 = 1   // 1-based column after last advance
+    var _src:     byte[]
+    var _pos:     int = 0
+    var _line:    int = 1
+    var _col:     int = 1   // 1-based column after last advance
 
     // ── Output token stream ────────────────────────────────────────────────
-    var _tokens:  HeapList<i32>   // [kind, line, val] × N
+    var _tokens:  HeapList<int>   // [kind, line, val] × N
 
     // ── String interning pool ─────────────────────────────────────────────
     // Each string is stored as raw bytes in _str_data; _str_off[i] is the
     // start offset and _str_len[i] is the length. Index 0 = empty string.
     // _str_data is a raw heap slice so we can return sub-slices by address.
-    var _str_data:      u8[]
-    var _str_data_size: i32 = 0
-    var _str_off:  HeapList<i32>
-    var _str_len:  HeapList<i32>
+    var _str_data:      byte[]
+    var _str_data_size: int = 0
+    var _str_off:  HeapList<int>
+    var _str_len:  HeapList<int>
 
     // ── Indent stack ──────────────────────────────────────────────────────
-    var _indent_stack: HeapList<i32>  // column widths (starts with [0])
+    var _indent_stack: HeapList<int>  // column widths (starts with [0])
 
-    var _errors:     i32 = 0
+    var _errors:     int = 0
     var _had_tokens: bool = false   // true if current line has emitted a content token
 
-    fun init(heap: &HeapAllocator, src: u8[])
+    fun init(heap: &HeapAllocator, src: byte[])
         _heap   = heap
         _src    = src
         _pos    = 0
@@ -54,7 +54,7 @@ class Scanner()
         _errors     = 0
         _had_tokens = false
         _tokens.init(heap)
-        _str_data      = heap.allocate_array<u8>(256)
+        _str_data      = heap.allocate_array<byte>(256)
         _str_data_size = 0
         _str_off.init(heap)
         _str_len.init(heap)
@@ -71,31 +71,31 @@ class Scanner()
         _scan_all()
         return _errors == 0
 
-    fun token_count() i32
+    fun token_count() int
         return _tokens.size() / TOK_STRIDE
 
-    fun tok_kind(i: i32) i32
+    fun tok_kind(i: int) int
         return _tokens.get(i * TOK_STRIDE)
 
-    fun tok_line(i: i32) i32
+    fun tok_line(i: int) int
         return _tokens.get(i * TOK_STRIDE + 1)
 
-    fun tok_val(i: i32) i32
+    fun tok_val(i: int) int
         return _tokens.get(i * TOK_STRIDE + 2)
 
-    fun str_get(idx: i32) u8[]
+    fun str_get(idx: int) byte[]
         val off := _str_off.get(idx)
         val len := _str_len.get(idx)
         return {&_str_data[off], len}
 
     // Intern an arbitrary byte slice (not from _src). Returns string index.
-    fun str_intern_bytes(buf: u8[], len: i32) i32
-        var i: i32 = 1
+    fun str_intern_bytes(buf: byte[], len: int) int
+        var i: int = 1
         while i < _str_off.size()
             if _str_len.get(i) == len
                 val off := _str_off.get(i)
                 var found: bool = true
-                var j: i32 = 0
+                var j: int = 0
                 while j < len
                     if _str_data[off + j] != buf[j]
                         found = false
@@ -104,15 +104,15 @@ class Scanner()
                 if found
                     return i
             i++
-        val idx: i32 = _str_off.size()
-        val data_off: i32 = _str_data_size
-        val needed: i32 = _str_data_size + len
+        val idx: int = _str_off.size()
+        val data_off: int = _str_data_size
+        val needed: int = _str_data_size + len
         if needed > _str_data.size()
-            var cap: i32 = _str_data.size() * 2
+            var cap: int = _str_data.size() * 2
             if cap < needed
                 cap = needed + 256
-            _str_data = _heap.realloc_array<u8>(_str_data, cap)
-        var j: i32 = 0
+            _str_data = _heap.realloc_array<byte>(_str_data, cap)
+        var j: int = 0
         while j < len
             _str_data[_str_data_size] = buf[j]
             _str_data_size++
@@ -121,59 +121,59 @@ class Scanner()
         _str_len.push(len)
         return idx
 
-    fun error_count() i32
+    fun error_count() int
         return _errors
 
     // ── Internals ─────────────────────────────────────────────────────────
 
-    fun _peek() u8
+    fun _peek() byte
         if _pos >= _src.size()
-            return u8(0)
+            return byte(0)
         return _src[_pos]
 
-    fun _peek2() u8
+    fun _peek2() byte
         if _pos + 1 >= _src.size()
-            return u8(0)
+            return byte(0)
         return _src[_pos + 1]
 
-    fun _advance() u8
-        val c: u8 = _src[_pos]
+    fun _advance() byte
+        val c: byte = _src[_pos]
         _pos++
-        if c == u8(10)   // '\n'
+        if c == byte(10)   // '\n'
             _line++
             _col = 1
         else
             _col++
         return c
 
-    fun _is_digit(c: u8) bool
-        return c >= u8(48) && c <= u8(57)   // '0'..'9'
+    fun _is_digit(c: byte) bool
+        return c >= byte(48) && c <= byte(57)   // '0'..'9'
 
-    fun _is_alpha(c: u8) bool
-        return (c >= u8(65) && c <= u8(90)) || (c >= u8(97) && c <= u8(122)) || c == u8(95)
+    fun _is_alpha(c: byte) bool
+        return (c >= byte(65) && c <= byte(90)) || (c >= byte(97) && c <= byte(122)) || c == byte(95)
 
-    fun _is_alnum(c: u8) bool
+    fun _is_alnum(c: byte) bool
         return _is_alpha(c) || _is_digit(c)
 
-    fun _is_hex(c: u8) bool
-        return _is_digit(c) || (c >= u8(65) && c <= u8(70)) || (c >= u8(97) && c <= u8(102))
+    fun _is_hex(c: byte) bool
+        return _is_digit(c) || (c >= byte(65) && c <= byte(70)) || (c >= byte(97) && c <= byte(102))
 
-    fun _emit(kind: i32, line: i32, v: i32)
+    fun _emit(kind: int, line: int, v: int)
         _tokens.push(kind)
         _tokens.push(line)
         _tokens.push(v)
-        val structural: bool = kind == i32(TokenKind.NEWLINE) || kind == i32(TokenKind.INDENT) || kind == i32(TokenKind.DEDENT)
+        val structural: bool = kind == int(TokenKind.NEWLINE) || kind == int(TokenKind.INDENT) || kind == int(TokenKind.DEDENT)
         if !structural
             _had_tokens = true
 
-    fun _intern(start: i32, len: i32) i32
+    fun _intern(start: int, len: int) int
         // Search for existing entry
-        var i: i32 = 1
+        var i: int = 1
         while i < _str_off.size()
             if _str_len.get(i) == len
                 val off := _str_off.get(i)
                 var found: bool = true
-                var j: i32 = 0
+                var j: int = 0
                 while j < len
                     if _str_data[off + j] != _src[start + j]
                         found = false
@@ -183,15 +183,15 @@ class Scanner()
                     return i
             i++
         // New entry — grow _str_data if needed
-        val idx: i32 = _str_off.size()
-        val data_off: i32 = _str_data_size
-        val needed: i32 = _str_data_size + len
+        val idx: int = _str_off.size()
+        val data_off: int = _str_data_size
+        val needed: int = _str_data_size + len
         if needed > _str_data.size()
-            var cap: i32 = _str_data.size() * 2
+            var cap: int = _str_data.size() * 2
             if cap < needed
                 cap = needed + 256
-            _str_data = _heap.realloc_array<u8>(_str_data, cap)
-        var j: i32 = 0
+            _str_data = _heap.realloc_array<byte>(_str_data, cap)
+        var j: int = 0
         while j < len
             _str_data[_str_data_size] = _src[start + j]
             _str_data_size++
@@ -200,206 +200,206 @@ class Scanner()
         _str_len.push(len)
         return idx
 
-    fun _parse_hex_int(start: i32) i32
-        var result: i32 = 0
-        var i: i32 = start
+    fun _parse_hex_int(start: int) int
+        var result: int = 0
+        var i: int = start
         while i < _src.size() && _is_hex(_src[i])
-            val c: u8 = _src[i]
-            var digit: i32 = 0
-            if c >= u8(97)
-                digit = i32(c) - 87
-            else if c >= u8(65)
-                digit = i32(c) - 55
+            val c: byte = _src[i]
+            var digit: int = 0
+            if c >= byte(97)
+                digit = int(c) - 87
+            else if c >= byte(65)
+                digit = int(c) - 55
             else
-                digit = i32(c) - 48
+                digit = int(c) - 48
             result = (result << 4) | digit
             i++
         _pos = i
         return result
 
-    fun _keyword_kind(s: u8[]) i32
+    fun _keyword_kind(s: byte[]) int
         if equals(s, "var")
-            return i32(TokenKind.KW_VAR)
+            return int(TokenKind.KW_VAR)
         if equals(s, "const")
-            return i32(TokenKind.KW_CONST)
+            return int(TokenKind.KW_CONST)
         if equals(s, "fun")
-            return i32(TokenKind.KW_FUN)
+            return int(TokenKind.KW_FUN)
         if equals(s, "data")
-            return i32(TokenKind.KW_DATA)
+            return int(TokenKind.KW_DATA)
         if equals(s, "enum")
-            return i32(TokenKind.KW_ENUM)
+            return int(TokenKind.KW_ENUM)
         if equals(s, "if")
-            return i32(TokenKind.KW_IF)
+            return int(TokenKind.KW_IF)
         if equals(s, "else")
-            return i32(TokenKind.KW_ELSE)
+            return int(TokenKind.KW_ELSE)
         if equals(s, "while")
-            return i32(TokenKind.KW_WHILE)
+            return int(TokenKind.KW_WHILE)
         if equals(s, "for")
-            return i32(TokenKind.KW_FOR)
+            return int(TokenKind.KW_FOR)
         if equals(s, "in")
-            return i32(TokenKind.KW_IN)
+            return int(TokenKind.KW_IN)
         if equals(s, "return")
-            return i32(TokenKind.KW_RETURN)
+            return int(TokenKind.KW_RETURN)
         if equals(s, "break")
-            return i32(TokenKind.KW_BREAK)
+            return int(TokenKind.KW_BREAK)
         if equals(s, "continue")
-            return i32(TokenKind.KW_CONTINUE)
+            return int(TokenKind.KW_CONTINUE)
         if equals(s, "match")
-            return i32(TokenKind.KW_MATCH)
+            return int(TokenKind.KW_MATCH)
         if equals(s, "int")
-            return i32(TokenKind.KW_INT)
+            return int(TokenKind.KW_INT)
         if equals(s, "fixed")
-            return i32(TokenKind.KW_FIXED)
+            return int(TokenKind.KW_FIXED)
         if equals(s, "bool")
-            return i32(TokenKind.KW_BOOL)
+            return int(TokenKind.KW_BOOL)
         if equals(s, "byte")
-            return i32(TokenKind.KW_BYTE)
+            return int(TokenKind.KW_BYTE)
         if equals(s, "asm")
-            return i32(TokenKind.KW_ASM)
+            return int(TokenKind.KW_ASM)
         if equals(s, "string")
-            return i32(TokenKind.KW_STRING)
+            return int(TokenKind.KW_STRING)
         if equals(s, "true")
-            return i32(TokenKind.LIT_TRUE)
+            return int(TokenKind.LIT_TRUE)
         if equals(s, "false")
-            return i32(TokenKind.LIT_FALSE)
-        return i32(TokenKind.IDENT)
+            return int(TokenKind.LIT_FALSE)
+        return int(TokenKind.IDENT)
 
-    fun _scan_number(line: i32) bool
-        val start: i32 = _pos
+    fun _scan_number(line: int) bool
+        val start: int = _pos
         var is_fixed: bool = false
         // hex
-        if _peek() == u8(48) && (_peek2() == u8(120) || _peek2() == u8(88))  // '0x'/'0X'
+        if _peek() == byte(48) && (_peek2() == byte(120) || _peek2() == byte(88))  // '0x'/'0X'
             _advance()  // '0'
             _advance()  // 'x'
-            val v: i32 = _parse_hex_int(_pos)
-            _emit(i32(TokenKind.LIT_INT), line, v)
+            val v: int = _parse_hex_int(_pos)
+            _emit(int(TokenKind.LIT_INT), line, v)
             return true
         // decimal / fixed
-        var int_val: i32 = 0
+        var int_val: int = 0
         while _is_digit(_peek())
-            int_val = int_val * 10 + (i32(_advance()) - 48)
-        if _peek() == u8(46) && _is_digit(_peek2())   // '.' followed by digit
+            int_val = int_val * 10 + (int(_advance()) - 48)
+        if _peek() == byte(46) && _is_digit(_peek2())   // '.' followed by digit
             is_fixed = true
             _advance()  // consume '.'
-            var denom: i32 = 1
-            var frac: i32 = 0
+            var denom: int = 1
+            var frac: int = 0
             while _is_digit(_peek())
-                frac  = frac * 10 + (i32(_advance()) - 48)
+                frac  = frac * 10 + (int(_advance()) - 48)
                 denom = denom * 10
-            val raw: i32 = (int_val << 16) + (frac * 65536) / denom
-            _emit(i32(TokenKind.LIT_FIXED), line, raw)
+            val raw: int = (int_val << 16) + (frac * 65536) / denom
+            _emit(int(TokenKind.LIT_FIXED), line, raw)
         else
-            _emit(i32(TokenKind.LIT_INT), line, int_val)
+            _emit(int(TokenKind.LIT_INT), line, int_val)
         return true
 
-    fun _scan_string(line: i32) bool
+    fun _scan_string(line: int) bool
         _advance()  // consume opening '"'
-        val start: i32 = _pos
-        while _pos < _src.size() && _src[_pos] != u8(34)  // '"'
-            if _src[_pos] == u8(92)   // '\'
+        val start: int = _pos
+        while _pos < _src.size() && _src[_pos] != byte(34)  // '"'
+            if _src[_pos] == byte(92)   // '\'
                 _pos++
             _pos++
-        val len: i32 = _pos - start
-        val idx: i32 = _intern(start, len)
+        val len: int = _pos - start
+        val idx: int = _intern(start, len)
         if _pos < _src.size()
             _advance()  // consume closing '"'
-        _emit(i32(TokenKind.LIT_STR), line, idx)
+        _emit(int(TokenKind.LIT_STR), line, idx)
         return true
 
-    fun _scan_ident(line: i32) bool
-        val start: i32 = _pos
+    fun _scan_ident(line: int) bool
+        val start: int = _pos
         while _is_alnum(_peek())
             _advance()
-        val len: i32 = _pos - start
-        val s: u8[] = {&_src[start], len}
-        val kw: i32 = _keyword_kind(s)
-        if kw == i32(TokenKind.LIT_TRUE)
+        val len: int = _pos - start
+        val s: byte[] = {&_src[start], len}
+        val kw: int = _keyword_kind(s)
+        if kw == int(TokenKind.LIT_TRUE)
             _emit(kw, line, 1)
-        else if kw == i32(TokenKind.LIT_FALSE)
+        else if kw == int(TokenKind.LIT_FALSE)
             _emit(kw, line, 0)
-        else if kw == i32(TokenKind.IDENT)
-            val idx: i32 = _intern(start, len)
-            _emit(i32(TokenKind.IDENT), line, idx)
+        else if kw == int(TokenKind.IDENT)
+            val idx: int = _intern(start, len)
+            _emit(int(TokenKind.IDENT), line, idx)
         else
             _emit(kw, line, 0)
         return true
 
     // Count leading spaces on the current line (called at line start).
-    fun _measure_indent() i32
-        var col: i32 = 0
-        var i: i32 = _pos
-        while i < _src.size() && _src[i] == u8(32)  // ' '
+    fun _measure_indent() int
+        var col: int = 0
+        var i: int = _pos
+        while i < _src.size() && _src[i] == byte(32)  // ' '
             col++
             i++
         return col
 
-    fun _handle_indent(col: i32, line: i32)
-        val top: i32 = _indent_stack.get(_indent_stack.size() - 1)
+    fun _handle_indent(col: int, line: int)
+        val top: int = _indent_stack.get(_indent_stack.size() - 1)
         if col > top
             _indent_stack.push(col)
-            _emit(i32(TokenKind.INDENT), line, col)
+            _emit(int(TokenKind.INDENT), line, col)
         else
             while _indent_stack.size() > 1 && _indent_stack.get(_indent_stack.size() - 1) > col
                 _indent_stack.pop()
-                _emit(i32(TokenKind.DEDENT), line, col)
+                _emit(int(TokenKind.DEDENT), line, col)
 
     // UTF-8 arrow → (0xE2 0x86 0x92)
     fun _is_arrow_utf8() bool
         if _pos + 2 >= _src.size()
             return false
-        return _src[_pos] == u8(0xE2) && _src[_pos + 1] == u8(0x86) && _src[_pos + 2] == u8(0x92)
+        return _src[_pos] == byte(0xE2) && _src[_pos + 1] == byte(0x86) && _src[_pos + 2] == byte(0x92)
 
     fun _scan_all()
         var at_line_start: bool = true
         while _pos < _src.size()
-            val line: i32 = _line
-            val c: u8 = _peek()
+            val line: int = _line
+            val c: byte = _peek()
 
             // ── blank / comment lines ──────────────────────────────────────
-            if c == u8(10)   // '\n'
+            if c == byte(10)   // '\n'
                 _advance()
                 if _had_tokens
-                    _emit(i32(TokenKind.NEWLINE), line, 0)
+                    _emit(int(TokenKind.NEWLINE), line, 0)
                     _had_tokens = false
                 at_line_start = true
                 continue
-            if c == u8(13)   // '\r'
+            if c == byte(13)   // '\r'
                 _advance()
                 continue
-            if c == u8(32) || c == u8(9)   // space / tab
+            if c == byte(32) || c == byte(9)   // space / tab
                 if at_line_start
-                    val col: i32 = _measure_indent()
+                    val col: int = _measure_indent()
                     // skip the spaces
-                    while _pos < _src.size() && (_src[_pos] == u8(32) || _src[_pos] == u8(9))
+                    while _pos < _src.size() && (_src[_pos] == byte(32) || _src[_pos] == byte(9))
                         _advance()
                     // only update indent level for non-blank lines (blank = spaces/comment only)
-                    val nc: u8 = _peek()
-                    val is_blank: bool = nc == u8(10) || nc == u8(13) || nc == u8(0) || (nc == u8(47) && _peek2() == u8(47))
+                    val nc: byte = _peek()
+                    val is_blank: bool = nc == byte(10) || nc == byte(13) || nc == byte(0) || (nc == byte(47) && _peek2() == byte(47))
                     if !is_blank
                         _handle_indent(col, line)
                     at_line_start = false
                 else
                     _advance()
                 continue
-            if c == u8(47) && _peek2() == u8(47)   // '//'
-                while _pos < _src.size() && _src[_pos] != u8(10)
+            if c == byte(47) && _peek2() == byte(47)   // '//'
+                while _pos < _src.size() && _src[_pos] != byte(10)
                     _advance()
                 continue
 
             // ── dedent / indent at start of non-blank line ─────────────────
             if at_line_start
-                val col: i32 = 0   // no leading spaces — back to base
+                val col: int = 0   // no leading spaces — back to base
                 _handle_indent(col, line)
                 at_line_start = false
 
             // ── numbers ───────────────────────────────────────────────────
             if _is_digit(c)
-                val num_line: i32 = _line
+                val num_line: int = _line
                 _scan_number(num_line)
                 continue
 
             // ── strings ───────────────────────────────────────────────────
-            if c == u8(34)   // '"'
+            if c == byte(34)   // '"'
                 _scan_string(line)
                 continue
 
@@ -413,108 +413,108 @@ class Scanner()
                 _advance()
                 _advance()
                 _advance()
-                _emit(i32(TokenKind.ARROW), line, 0)
+                _emit(int(TokenKind.ARROW), line, 0)
                 continue
 
             // ── two-char operators ─────────────────────────────────────────
             _advance()
-            if c == u8(58) && _peek() == u8(61)   // ':='
+            if c == byte(58) && _peek() == byte(61)   // ':='
                 _advance()
-                _emit(i32(TokenKind.WALRUS), line, 0)
-            else if c == u8(60) && _peek() == u8(60)   // '<<'
+                _emit(int(TokenKind.WALRUS), line, 0)
+            else if c == byte(60) && _peek() == byte(60)   // '<<'
                 _advance()
-                _emit(i32(TokenKind.LSHIFT), line, 0)
-            else if c == u8(62) && _peek() == u8(62)   // '>>'
+                _emit(int(TokenKind.LSHIFT), line, 0)
+            else if c == byte(62) && _peek() == byte(62)   // '>>'
                 _advance()
-                _emit(i32(TokenKind.RSHIFT), line, 0)
-            else if c == u8(61) && _peek() == u8(61)   // '=='
+                _emit(int(TokenKind.RSHIFT), line, 0)
+            else if c == byte(61) && _peek() == byte(61)   // '=='
                 _advance()
-                _emit(i32(TokenKind.EQEQ), line, 0)
-            else if c == u8(33) && _peek() == u8(61)   // '!='
+                _emit(int(TokenKind.EQEQ), line, 0)
+            else if c == byte(33) && _peek() == byte(61)   // '!='
                 _advance()
-                _emit(i32(TokenKind.NEQ), line, 0)
-            else if c == u8(60) && _peek() == u8(61)   // '<='
+                _emit(int(TokenKind.NEQ), line, 0)
+            else if c == byte(60) && _peek() == byte(61)   // '<='
                 _advance()
-                _emit(i32(TokenKind.LE), line, 0)
-            else if c == u8(62) && _peek() == u8(61)   // '>='
+                _emit(int(TokenKind.LE), line, 0)
+            else if c == byte(62) && _peek() == byte(61)   // '>='
                 _advance()
-                _emit(i32(TokenKind.GE), line, 0)
-            else if c == u8(38) && _peek() == u8(38)   // '&&'
+                _emit(int(TokenKind.GE), line, 0)
+            else if c == byte(38) && _peek() == byte(38)   // '&&'
                 _advance()
-                _emit(i32(TokenKind.AND_AND), line, 0)
-            else if c == u8(124) && _peek() == u8(124)  // '||'
+                _emit(int(TokenKind.AND_AND), line, 0)
+            else if c == byte(124) && _peek() == byte(124)  // '||'
                 _advance()
-                _emit(i32(TokenKind.OR_OR), line, 0)
-            else if c == u8(43) && _peek() == u8(61)   // '+='
+                _emit(int(TokenKind.OR_OR), line, 0)
+            else if c == byte(43) && _peek() == byte(61)   // '+='
                 _advance()
-                _emit(i32(TokenKind.PLUS_EQ), line, 0)
-            else if c == u8(45) && _peek() == u8(61)   // '-='
+                _emit(int(TokenKind.PLUS_EQ), line, 0)
+            else if c == byte(45) && _peek() == byte(61)   // '-='
                 _advance()
-                _emit(i32(TokenKind.MINUS_EQ), line, 0)
-            else if c == u8(42) && _peek() == u8(61)   // '*='
+                _emit(int(TokenKind.MINUS_EQ), line, 0)
+            else if c == byte(42) && _peek() == byte(61)   // '*='
                 _advance()
-                _emit(i32(TokenKind.STAR_EQ), line, 0)
-            else if c == u8(47) && _peek() == u8(61)   // '/='
+                _emit(int(TokenKind.STAR_EQ), line, 0)
+            else if c == byte(47) && _peek() == byte(61)   // '/='
                 _advance()
-                _emit(i32(TokenKind.SLASH_EQ), line, 0)
-            else if c == u8(37) && _peek() == u8(61)   // '%='
+                _emit(int(TokenKind.SLASH_EQ), line, 0)
+            else if c == byte(37) && _peek() == byte(61)   // '%='
                 _advance()
-                _emit(i32(TokenKind.PERCENT_EQ), line, 0)
-            else if c == u8(45) && _peek() == u8(62)   // '->'
+                _emit(int(TokenKind.PERCENT_EQ), line, 0)
+            else if c == byte(45) && _peek() == byte(62)   // '->'
                 _advance()
-                _emit(i32(TokenKind.ARROW), line, 0)
-            else if c == u8(46) && _peek() == u8(46)   // '..'
+                _emit(int(TokenKind.ARROW), line, 0)
+            else if c == byte(46) && _peek() == byte(46)   // '..'
                 _advance()
-                _emit(i32(TokenKind.DOTDOT), line, 0)
-            else if c == u8(123) && _peek() == u8(38)  // '{&'
+                _emit(int(TokenKind.DOTDOT), line, 0)
+            else if c == byte(123) && _peek() == byte(38)  // '{&'
                 _advance()
-                _emit(i32(TokenKind.AMP_BRACE), line, 0)
-            else if c == u8(43)
-                _emit(i32(TokenKind.PLUS),       line, 0)
-            else if c == u8(45)
-                _emit(i32(TokenKind.MINUS),      line, 0)
-            else if c == u8(42)
-                _emit(i32(TokenKind.STAR),       line, 0)
-            else if c == u8(47)
-                _emit(i32(TokenKind.SLASH),      line, 0)
-            else if c == u8(37)
-                _emit(i32(TokenKind.PERCENT),    line, 0)
-            else if c == u8(38)
-                _emit(i32(TokenKind.AMP),        line, 0)
-            else if c == u8(124)
-                _emit(i32(TokenKind.PIPE),       line, 0)
-            else if c == u8(94)
-                _emit(i32(TokenKind.CARET),      line, 0)
-            else if c == u8(126)
-                _emit(i32(TokenKind.TILDE),      line, 0)
-            else if c == u8(61)
-                _emit(i32(TokenKind.EQ),         line, 0)
-            else if c == u8(60)
-                _emit(i32(TokenKind.LT),         line, 0)
-            else if c == u8(62)
-                _emit(i32(TokenKind.GT),         line, 0)
-            else if c == u8(33)
-                _emit(i32(TokenKind.BANG),       line, 0)
-            else if c == u8(40)
-                _emit(i32(TokenKind.LPAREN),     line, 0)
-            else if c == u8(41)
-                _emit(i32(TokenKind.RPAREN),     line, 0)
-            else if c == u8(91)
-                _emit(i32(TokenKind.LBRACKET),   line, 0)
-            else if c == u8(93)
-                _emit(i32(TokenKind.RBRACKET),   line, 0)
-            else if c == u8(58)
-                _emit(i32(TokenKind.COLON),      line, 0)
-            else if c == u8(44)
-                _emit(i32(TokenKind.COMMA),      line, 0)
-            else if c == u8(46)
-                _emit(i32(TokenKind.DOT),        line, 0)
-            else if c == u8(64)
-                _emit(i32(TokenKind.AT),         line, 0)
-            else if c == u8(125)
-                _emit(i32(TokenKind.RBRACE),     line, 0)
-            else if c == u8(95)
-                _emit(i32(TokenKind.UNDERSCORE), line, 0)
+                _emit(int(TokenKind.AMP_BRACE), line, 0)
+            else if c == byte(43)
+                _emit(int(TokenKind.PLUS),       line, 0)
+            else if c == byte(45)
+                _emit(int(TokenKind.MINUS),      line, 0)
+            else if c == byte(42)
+                _emit(int(TokenKind.STAR),       line, 0)
+            else if c == byte(47)
+                _emit(int(TokenKind.SLASH),      line, 0)
+            else if c == byte(37)
+                _emit(int(TokenKind.PERCENT),    line, 0)
+            else if c == byte(38)
+                _emit(int(TokenKind.AMP),        line, 0)
+            else if c == byte(124)
+                _emit(int(TokenKind.PIPE),       line, 0)
+            else if c == byte(94)
+                _emit(int(TokenKind.CARET),      line, 0)
+            else if c == byte(126)
+                _emit(int(TokenKind.TILDE),      line, 0)
+            else if c == byte(61)
+                _emit(int(TokenKind.EQ),         line, 0)
+            else if c == byte(60)
+                _emit(int(TokenKind.LT),         line, 0)
+            else if c == byte(62)
+                _emit(int(TokenKind.GT),         line, 0)
+            else if c == byte(33)
+                _emit(int(TokenKind.BANG),       line, 0)
+            else if c == byte(40)
+                _emit(int(TokenKind.LPAREN),     line, 0)
+            else if c == byte(41)
+                _emit(int(TokenKind.RPAREN),     line, 0)
+            else if c == byte(91)
+                _emit(int(TokenKind.LBRACKET),   line, 0)
+            else if c == byte(93)
+                _emit(int(TokenKind.RBRACKET),   line, 0)
+            else if c == byte(58)
+                _emit(int(TokenKind.COLON),      line, 0)
+            else if c == byte(44)
+                _emit(int(TokenKind.COMMA),      line, 0)
+            else if c == byte(46)
+                _emit(int(TokenKind.DOT),        line, 0)
+            else if c == byte(64)
+                _emit(int(TokenKind.AT),         line, 0)
+            else if c == byte(125)
+                _emit(int(TokenKind.RBRACE),     line, 0)
+            else if c == byte(95)
+                _emit(int(TokenKind.UNDERSCORE), line, 0)
             else
                 _errors++
         // ── close any open indent levels ──────────────────────────────────

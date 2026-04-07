@@ -2,28 +2,28 @@
 // Adjust to match your target platform's memory constraints.
 
 // Max addressable space (16-bit addresses)
-const MAX_CODE:   i32 = 65536
-const MAX_MEMORY: i32 = 65536
+const MAX_CODE:   int = 65536
+const MAX_MEMORY: int = 65536
 
 // Compile-time array sizes for the VM class
-const VM_MAX_FRAMES:    i32 = 8
-const VM_MAX_SIGNALS:   i32 = 32
+const VM_MAX_FRAMES:    int = 8
+const VM_MAX_SIGNALS:   int = 32
 
 // Task runtime limits
-const STACK_SIZE: i32 = 256
-const REGISTER_SIZE: i32 = 4
+const STACK_SIZE: int = 256
+const REGISTER_SIZE: int = 4
 
 // System VM runtime limits (lightweight: boot, I/O, scheduler)
-const SYS_MEMORY_SIZE:  i32 = 1024
-const SYS_MAX_TASKS:    i32 = 2
-const SYS_MAX_HANDLERS: i32 = 4
+const SYS_MEMORY_SIZE:  int = 1024
+const SYS_MAX_TASKS:    int = 2
+const SYS_MAX_HANDLERS: int = 4
 
 // Application VM runtime limits
-const APP_MEMORY_SIZE:  i32 = MAX_MEMORY
-const APP_MAX_TASKS:    i32 = 8
-const APP_MAX_HANDLERS: i32 = 32
+const APP_MEMORY_SIZE:  int = MAX_MEMORY
+const APP_MAX_TASKS:    int = 8
+const APP_MAX_HANDLERS: int = 32
 
 // Modules VM runtime limits
-const MAX_MODULES:      i32 = 8
-const MAX_MODULE_ID:    i32 = 128
+const MAX_MODULES:      int = 8
+const MAX_MODULE_ID:    int = 128
 
