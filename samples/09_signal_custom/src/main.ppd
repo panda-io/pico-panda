@@ -1,8 +1,8 @@
 // ── 09_signal_custom send and listen custom signals ────────────────────────────
 
-const FIRST_STEP = 100 // 0 ~ 99 are reserved
-const SECOND_STEP = 101
-const FINAL_STEP = 102
+const FIRST_STEP: int = 100 // 0 ~ 99 are reserved
+const SECOND_STEP: int = 101
+const FINAL_STEP: int = 102
 
 @signal(SIGNAL_SYS_START)
 fun on_start()
