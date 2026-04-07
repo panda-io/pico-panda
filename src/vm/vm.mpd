@@ -305,11 +305,11 @@ class VM()
     // ── Private: read/write helpers ───────────────────────────────────────────
 
     @inline
-    fun _read_i32le(buf: byte[], addr: int) int
+    fun _read_u32le(buf: byte[], addr: int) int
         return int(buf[addr]) | (int(buf[addr + 1]) << 8) | (int(buf[addr + 2]) << 16) | (int(buf[addr + 3]) << 24)
 
     @inline
-    fun _write_i32le(buf: byte[], addr: int, v: int)
+    fun _write_u32le(buf: byte[], addr: int, v: int)
         buf[addr]     = byte(v)
         buf[addr + 1] = byte(v >> 8)
         buf[addr + 2] = byte(v >> 16)
@@ -381,21 +381,21 @@ class VM()
 
             match op
                 OpCode.Push:
-                    task.push(_read_i32le(code, pc))
+                    task.push(_read_u32le(code, pc))
                     pc += 4
                 OpCode.LoadGlobal:
                     val addr: int = _read_u16(code, pc)
                     pc += 2
-                    task.push(_read_i32le(data, addr))
+                    task.push(_read_u32le(data, addr))
                 OpCode.StoreGlobal:
                     val addr: int = _read_u16(code, pc)
                     pc += 2
-                    _write_i32le(data, addr, task.pop())
+                    _write_u32le(data, addr, task.pop())
                 OpCode.LoadGlobalInd:
-                    task.push(_read_i32le(data, task.pop()))
+                    task.push(_read_u32le(data, task.pop()))
                 OpCode.StoreGlobalInd:
                     val addr: int = task.pop()
-                    _write_i32le(data, addr, task.pop())
+                    _write_u32le(data, addr, task.pop())
                 OpCode.LoadReg:
                     val slot: int = int(code[pc])
                     pc++
