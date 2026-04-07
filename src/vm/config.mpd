@@ -16,7 +16,7 @@ const REGISTER_SIZE: int = 4
 // System VM runtime limits (lightweight: boot, I/O, scheduler)
 const SYS_MEMORY_SIZE:  int = 1024
 const SYS_MAX_TASKS:    int = 2
-const SYS_MAX_HANDLERS: int = 4
+const SYS_MAX_HANDLERS: int = 16
 
 // Application VM runtime limits
 const APP_MEMORY_SIZE:  int = MAX_MEMORY

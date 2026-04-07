@@ -618,6 +618,9 @@ fun _signal_module(sub: byte, task: &Task)
             val handler: &Handler = vm._spawn_handler()
             if handler != null
                 handler.init(he, ha)
+            else
+                vm._last_error = VmError.SPAWN_FAILED
+                task.state = TaskState.FINISHED
         SignalCode.ExitHandler:
             task.state = TaskState.FINISHED
         SignalCode.HandlerSleep:

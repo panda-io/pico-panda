@@ -92,7 +92,6 @@ class Checker()
         _resolve_all_types()
         _pass1_globals()
         _pass2()
-        _check_signal_ids()
         return _errors == 0
 
     fun error_count() int
@@ -661,53 +660,4 @@ class Checker()
                 return _types.field_type(struct_tid, fi)
         return TYPE_NONE
 
-    // ── Pass 3: Duplicate signal ID check ─────────────────────────────────
-
-    fun _check_signal_ids()
-        // Build const int map: name → value (mirrors codegen's _global_consts)
-        var const_names:  int[64]
-        var const_vals:   int[64]
-        var const_count:  int = 0
-        var i: int = 0
-        while i < _decls.count()
-            if _decls.kind(i) == int(DeclKind.GLOBAL_VAR) && _decls.d3(i) == 1
-                val init_e: int = _decls.d2(i)
-                if init_e != -1 && _nodes.kind(init_e) == int(ExprKind.LIT_INT)
-                    if const_count < 64
-                        const_names[const_count] = _decls.d0(i)
-                        const_vals[const_count]  = _nodes.d0(init_e)
-                        const_count++
-            i++
-        // Collect resolved signal IDs from @signal functions
-        var seen_ids:   int[64]
-        var seen_lines: int[64]
-        var seen_count: int = 0
-        i = 0
-        while i < _decls.count()
-            if _decls.kind(i) == int(DeclKind.FUN) && _decls.ann_kind(i) == 1
-                val ann_name_si: int = _decls.ann_name(i)
-                var sig_id: int = -1
-                if ann_name_si == -1
-                    sig_id = _decls.ann_n(i)
-                else
-                    val ann_name: byte[] = _scan.str_get(ann_name_si)
-                    var ci: int = 0
-                    while ci < const_count
-                        if equals(_scan.str_get(const_names[ci]), ann_name)
-                            sig_id = const_vals[ci]
-                            break
-                        ci++
-                if sig_id >= 0
-                    var si: int = 0
-                    while si < seen_count
-                        if seen_ids[si] == sig_id
-                            _cur_line = _decls.line(i)
-                            _error("duplicate signal id")
-                            break
-                        si++
-                    if seen_count < 64
-                        seen_ids[seen_count]   = sig_id
-                        seen_lines[seen_count] = _decls.line(i)
-                        seen_count++
-            i++
 #end
