@@ -520,6 +520,6 @@ class Scanner()
         // ── close any open indent levels ──────────────────────────────────
         while _indent_stack.size() > 1
             _indent_stack.pop()
-            _emit(TokenKind.DEDENT, _line, 0)
-        _emit(TokenKind.EOF, _line, 0)
+            _emit(int(TokenKind.DEDENT), _line, 0)
+        _emit(int(TokenKind.EOF), _line, 0)
 #end
