@@ -67,7 +67,7 @@ enum OpCode
 // ── Built-in module IDs ───────────────────────────────────────────────────────
 
 const MODULE_CONSOLE: byte = 0x01
-const MODULE_SIGNAL:   byte = 0x02
+const MODULE_SIGNAL:  byte = 0x02
 
 // ── Console sub-codes (MODULE_CONSOLE) ───────────────────────────────────────
 

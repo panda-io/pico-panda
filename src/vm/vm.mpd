@@ -1,11 +1,10 @@
-import vm.task::Task
-import vm.task::TaskState
-import vm.task::REGISTER_SIZE
+import vm.task::*
 import vm.handler::Handler
 import vm.signal::*
 import vm.config::*
 import vm.opcode::*
 import console
+import string::bits_to_fixed
 
 enum Code
     Sys
@@ -597,7 +596,7 @@ fun _console_handler(sub: byte, task: &Task)
         ConsoleCode.PrintInt:
             console.write_i32(task.pop())
         ConsoleCode.PrintFixed:
-            console.write_fixed(task.pop())
+            console.write_fixed(bits_to_fixed(task.pop()))
         ConsoleCode.PrintStr:
             val packed: int = task.pop()
             val str_addr: int = packed & 0xFFFF
