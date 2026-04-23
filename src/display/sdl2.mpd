@@ -1,0 +1,156 @@
+import graphics
+import format::*
+import geometry::*
+import hosted.allocator::HeapAllocator
+
+#if HOSTED
+
+@raw("#include <SDL2/SDL.h>")
+@raw('''
+static void _sdl2_hint_nearest(void) { SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0"); }
+''')
+
+// ── SDL2 externs ──────────────────────────────────────────────────────────────
+
+@extern("SDL_Init(SDL_INIT_VIDEO)")
+fun _sdl_init(): int
+
+@extern("SDL_Quit()")
+fun _sdl_quit()
+
+@extern("_sdl2_hint_nearest()")
+fun _sdl_hint_nearest()
+
+@extern("SDL_CreateWindow((const char*){title}.ptr, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, {w}, {h}, 0)")
+fun _sdl_create_window(title: byte[], w: int, h: int): &void
+
+@extern("SDL_CreateRenderer((SDL_Window*){window}, -1, SDL_RENDERER_ACCELERATED)")
+fun _sdl_create_renderer(window: &void): &void
+
+@extern("SDL_CreateTexture((SDL_Renderer*){renderer}, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, {w}, {h})")
+fun _sdl_create_texture(renderer: &void, w: int, h: int): &void
+
+@extern("SDL_UpdateTexture((SDL_Texture*){texture}, NULL, {pixels}.ptr, {pitch})")
+fun _sdl_update_texture(texture: &void, pixels: byte[], pitch: int)
+
+@extern("SDL_RenderClear((SDL_Renderer*){renderer})")
+fun _sdl_render_clear(renderer: &void)
+
+@extern("SDL_RenderCopy((SDL_Renderer*){renderer}, (SDL_Texture*){texture}, NULL, NULL)")
+fun _sdl_render_copy(renderer: &void, texture: &void)
+
+@extern("SDL_RenderPresent((SDL_Renderer*){renderer})")
+fun _sdl_render_present(renderer: &void)
+
+@extern("SDL_PollEvent((SDL_Event*){event}.ptr)")
+fun _sdl_poll_event(event: byte[]): int
+
+@extern("SDL_GetTicks()")
+fun _sdl_get_ticks(): u32
+
+@extern("SDL_Delay({ms})")
+fun _sdl_delay(ms: u32)
+
+@extern("SDL_DestroyTexture((SDL_Texture*){texture})")
+fun _sdl_destroy_texture(texture: &void)
+
+@extern("SDL_DestroyRenderer((SDL_Renderer*){renderer})")
+fun _sdl_destroy_renderer(renderer: &void)
+
+@extern("SDL_DestroyWindow((SDL_Window*){window})")
+fun _sdl_destroy_window(window: &void)
+
+
+// ── SDL2Display ───────────────────────────────────────────────────────────────
+
+class SDL2Display()
+    var _width:    int
+    var _height:   int
+    var _window:   &void
+    var _renderer: &void
+    var _texture:  &void
+    var _fb:       byte[]        // GFX renders here (driver.strip0)
+    var _fb_swap:  byte[]        // byte-swapped copy for SDL upload
+    var _heap:     HeapAllocator
+    var driver:    graphics.Driver
+
+
+// ── driver callbacks ──────────────────────────────────────────────────────────
+
+fun _sdl2_set_rotation(handle: &void, r: Rotation)
+    // no-op — GFX handles rotation logically
+
+fun _sdl2_wait(handle: &void)
+    // no-op — no async DMA
+
+fun _sdl2_flush(handle: &void, rect: &Rect, buf: byte[])
+    val d: &SDL2Display = &SDL2Display(handle)
+    // Byte-swap RGB565: GFX emits big-endian [hi, lo]; SDL2 on LE host needs [lo, hi]
+    var row: int = 0
+    while row < rect.height
+        var col: int = 0
+        while col < rect.width
+            val si: int = (row * rect.width + col) * 2
+            val di: int = ((rect.y + row) * d._width + rect.x + col) * 2
+            d._fb_swap[di]     = buf[si + 1]
+            d._fb_swap[di + 1] = buf[si]
+            col++
+        row++
+
+fun _sdl2_frame_complete(handle: &void)
+    val d: &SDL2Display = &SDL2Display(handle)
+    _sdl_update_texture(d._texture, d._fb_swap, d._width * 2)
+    _sdl_render_clear(d._renderer)
+    _sdl_render_copy(d._renderer, d._texture)
+    _sdl_render_present(d._renderer)
+
+
+// ── public API ────────────────────────────────────────────────────────────────
+
+// Standard logical sizes: 128x128, 320x240, 480x480 (matches SPI screen sizes).
+// scale: integer pixel multiplier — window = width*scale x height*scale.
+fun attach_sdl2_display(d: &SDL2Display, width: int, height: int, scale: int)
+    d._width  = width
+    d._height = height
+    val fb_size: int = width * height * 2
+    d._fb      = d._heap.allocate_array<byte>(fb_size)
+    d._fb_swap = d._heap.allocate_array<byte>(fb_size)
+    _sdl_init()
+    _sdl_hint_nearest()
+    d._window   = _sdl_create_window("pico-panda", width * scale, height * scale)
+    d._renderer = _sdl_create_renderer(d._window)
+    d._texture  = _sdl_create_texture(d._renderer, width, height)
+    d.driver.width          = width
+    d.driver.height         = height
+    d.driver.strip0         = d._fb
+    d.driver.strip1         = {null, 0}    // single-buffer mode (full-frame strip)
+    d.driver.handle         = &void(d)
+    d.driver.set_rotation   = _sdl2_set_rotation
+    d.driver.wait           = _sdl2_wait
+    d.driver.flush          = _sdl2_flush
+    d.driver.frame_complete = _sdl2_frame_complete
+
+// Returns true if window close was requested (SDL_QUIT = 0x100).
+fun sdl2_poll(d: &SDL2Display): bool
+    var evt: byte[56]
+    while _sdl_poll_event({&evt[0], 56}) != 0
+        val t: int = int(evt[0]) | (int(evt[1]) << 8) | (int(evt[2]) << 16) | (int(evt[3]) << 24)
+        if t == 0x100
+            return true
+    return false
+
+fun sdl2_ticks(d: &SDL2Display): u32
+    return _sdl_get_ticks()
+
+fun sdl2_delay(d: &SDL2Display, ms: u32)
+    _sdl_delay(ms)
+
+fun sdl2_shutdown(d: &SDL2Display)
+    _sdl_destroy_texture(d._texture)
+    _sdl_destroy_renderer(d._renderer)
+    _sdl_destroy_window(d._window)
+    _sdl_quit()
+    d._heap.free_array<byte>(d._fb)
+    d._heap.free_array<byte>(d._fb_swap)
+
+#end

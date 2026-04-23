@@ -1,0 +1,124 @@
+// ── panda.mpd ─────────────────────────────────────────────────────────────────
+// Pico-Panda GUI runner. Loads bytecode and runs it with an SDL2 display.
+//
+// Usage:
+//   panda [file]         run bytecode (default: ppd.cfg output)
+//     -fps N             tick rate in Hz (default: 60)
+//     -display WxH       logical resolution (default: 320x240)
+//     -scale N           integer scale factor (default: 2)
+//
+// HOSTED only.
+
+import vm.vm::*
+import vm.config::MAX_CODE
+import display.sdl2::*
+import project::*
+import console::*
+import hosted.file::*
+import hosted.args::*
+import hosted.signal::*
+import string::*
+
+// ── module-level state ────────────────────────────────────────────────────────
+
+var _sdl2:    SDL2Display
+var _run_buf: byte[MAX_CODE]
+var _cfg:     PpdConfig
+
+// ── run ───────────────────────────────────────────────────────────────────────
+
+fun _run(path: byte[], fps: int, disp_w: int, disp_h: int, scale: int)
+    var run_path: byte[] = path
+    if run_path.size() == 0
+        if !_cfg.load("ppd.cfg")
+            write_string("error: cannot open 'ppd.cfg'\n")
+            return
+        if !_cfg.valid()
+            write_string("error: 'ppd.cfg' must define 'output'\n")
+            return
+        run_path = _cfg.output()
+
+    var f: File
+    if !f.open(run_path, READ)
+        write_string("error: cannot open '")
+        write_string(run_path)
+        write_string("'\n")
+        return
+    val n: int = f.read_bytes({&_run_buf[0], MAX_CODE})
+    f.close()
+
+    attach_sdl2_display(&_sdl2, disp_w, disp_h, scale)
+
+    // TODO: load system ROM before app ROM
+
+    vm_reset()
+    vm_load_app({&_run_buf[0], n})
+    vm_boot_app()
+
+    val target_ms: u32 = u32(1000 / fps)
+    val dt: int = 1000 * 65536 / fps
+    catch_signals()
+
+    var deadline: u32 = sdl2_ticks(&_sdl2)
+    while !exit_requested() && !vm_exit_requested() && !sdl2_poll(&_sdl2)
+        deadline = deadline + target_ms
+        vm_tick(dt)
+        val now: u32 = sdl2_ticks(&_sdl2)
+        if deadline > now
+            sdl2_delay(&_sdl2, deadline - now)
+        else
+            deadline = sdl2_ticks(&_sdl2)
+
+    sdl2_shutdown(&_sdl2)
+
+// ── usage ─────────────────────────────────────────────────────────────────────
+
+fun _usage()
+    write_string("usage: panda [file]\n")
+    write_string("  file              bytecode to run (default: ppd.cfg output)\n")
+    write_string("  -fps N            tick rate in Hz (default: 60)\n")
+    write_string("  -display WxH      logical display size (default: 320x240)\n")
+    write_string("  -scale N          integer scale factor (default: 2)\n")
+
+// ── entry point ───────────────────────────────────────────────────────────────
+
+fun main()
+    var run_arg:  byte[] = ""
+    var fps:      int    = 60
+    var disp_str: byte[] = "320x240"
+    var scale:    int    = 2
+
+    val n: int = arg_count()
+    var j: int = 1
+    while j < n
+        val a: byte[] = arg_value(j)
+        if equals(a, "-fps") && j + 1 < n
+            fps = parse_int(arg_value(j + 1))
+            j = j + 2
+        else if equals(a, "-display") && j + 1 < n
+            disp_str = arg_value(j + 1)
+            j = j + 2
+        else if equals(a, "-scale") && j + 1 < n
+            scale = parse_int(arg_value(j + 1))
+            j = j + 2
+        else if equals(a, "-h") || equals(a, "--help")
+            _usage()
+            return
+        else if !starts_with(a, "-")
+            run_arg = a
+            j++
+        else
+            j++
+
+    var disp_w: int = 320
+    var disp_h: int = 240
+    val xi: int = index_of(disp_str, byte(120))   // 'x' = 120
+    if xi > 0
+        disp_w = parse_int(sub(disp_str, 0, xi))
+        disp_h = parse_int(sub(disp_str, xi + 1, disp_str.size() - xi - 1))
+
+    if fps <= 0 || disp_w <= 0 || disp_h <= 0 || scale <= 0
+        _usage()
+        return
+
+    _run(run_arg, fps, disp_w, disp_h, scale)

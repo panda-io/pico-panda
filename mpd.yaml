@@ -15,3 +15,13 @@ targets:
     cc:
       bin: gcc
       flags: [-O2, -Wall, -Isrc]
+
+  panda:
+    entry: panda
+    src: src/
+    type: bin
+    flags: [HOSTED]
+    output: bin/panda
+    cc:
+      bin: gcc
+      flags: [-O2, -Wall, -Isrc, -I/opt/homebrew/include, -L/opt/homebrew/lib, -lSDL2]
