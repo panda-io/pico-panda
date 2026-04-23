@@ -1,4 +1,4 @@
-import vm.task::REGISTER_SIZE
+import vm.config::REGISTER_SIZE
 
 // ── System signal IDs (shared between assembler and host) ─────────────────────
 const SIGNAL_SYS_START: int = 1

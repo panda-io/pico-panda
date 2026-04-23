@@ -1,4 +1,4 @@
-import vm.vm_error::VmError
+import vm.vm::VmError
 import vm.config::VM_MAX_FRAMES
 import vm.config::STACK_SIZE
 import vm.config::REGISTER_SIZE
