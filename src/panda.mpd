@@ -18,6 +18,9 @@ import hosted.file::*
 import hosted.args::*
 import hosted.signal::*
 import string::*
+import graphics::*
+import node.bitmap::*
+import icon::*
 
 // ── module-level state ────────────────────────────────────────────────────────
 
@@ -28,6 +31,8 @@ var _cfg:     PpdConfig
 // ── run ───────────────────────────────────────────────────────────────────────
 
 fun _run(path: byte[], fps: int, disp_w: int, disp_h: int, scale: int)
+    /*
+    TODO: load app ROM later
     var run_path: byte[] = path
     if run_path.size() == 0
         if !_cfg.load("ppd.cfg")
@@ -46,14 +51,18 @@ fun _run(path: byte[], fps: int, disp_w: int, disp_h: int, scale: int)
         return
     val n: int = f.read_bytes({&_run_buf[0], MAX_CODE})
     f.close()
+    */
 
     attach_sdl2_display(&_sdl2, disp_w, disp_h, scale)
 
     // TODO: load system ROM before app ROM
+    // TODO: load ROM later
 
     vm_reset()
-    vm_load_app({&_run_buf[0], n})
-    vm_boot_app()
+    // vm_load_app({&_run_buf[0], n})
+    // vm_boot_app()
+
+    render()
 
     val target_ms: u32 = u32(1000 / fps)
     val dt: int = 1000 * 65536 / fps
@@ -122,3 +131,14 @@ fun main()
         return
 
     _run(run_arg, fps, disp_w, disp_h, scale)
+
+var _gfx:                Graphics
+var _allocator:          Allocator
+var _allocator_buffer:   u8[ALLOCATOR_SIZE]
+
+fun render()
+    var point: Point = { 32, 0 }
+    var bitmap: &Bitmap = create_bitmap_from_image(&_allocator, &point, &icon)
+    _gfx.init(&_sdl2.driver, PixelFormat.RGB565, 0, Rotation.R0, false)
+    _gfx.set_root(bitmap.get_node())
+    _gfx.render()

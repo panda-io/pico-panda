@@ -5,8 +5,8 @@ import hosted.allocator::HeapAllocator
 
 #if HOSTED
 
-@raw("#include <SDL2/SDL.h>")
 @raw('''
+#include <SDL2/SDL.h>
 static void _sdl2_hint_nearest(void) { SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0"); }
 ''')
 
@@ -21,14 +21,14 @@ fun _sdl_quit()
 @extern("_sdl2_hint_nearest()")
 fun _sdl_hint_nearest()
 
-@extern("SDL_CreateWindow((const char*){title}.ptr, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, {w}, {h}, 0)")
-fun _sdl_create_window(title: byte[], w: int, h: int): &void
+@extern("SDL_CreateWindow((const char*){title}.ptr, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, {width}, {height}, 0)")
+fun _sdl_create_window(title: byte[], width: int, height: int): &void
 
 @extern("SDL_CreateRenderer((SDL_Window*){window}, -1, SDL_RENDERER_ACCELERATED)")
 fun _sdl_create_renderer(window: &void): &void
 
-@extern("SDL_CreateTexture((SDL_Renderer*){renderer}, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, {w}, {h})")
-fun _sdl_create_texture(renderer: &void, w: int, h: int): &void
+@extern("SDL_CreateTexture((SDL_Renderer*){renderer}, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, {width}, {height})")
+fun _sdl_create_texture(renderer: &void, width: int, height: int): &void
 
 @extern("SDL_UpdateTexture((SDL_Texture*){texture}, NULL, {pixels}.ptr, {pitch})")
 fun _sdl_update_texture(texture: &void, pixels: byte[], pitch: int)
