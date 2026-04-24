@@ -132,11 +132,14 @@ fun main()
 
     _run(run_arg, fps, disp_w, disp_h, scale)
 
+const ALLOCATOR_SIZE: int = 1024
+
 var _gfx:                Graphics
 var _allocator:          Allocator
 var _allocator_buffer:   u8[ALLOCATOR_SIZE]
 
 fun render()
+    _allocator.init(_allocator_buffer)
     var point: Point = { 32, 0 }
     var bitmap: &Bitmap = create_bitmap_from_image(&_allocator, &point, &icon)
     _gfx.init(&_sdl2.driver, PixelFormat.RGB565, 0, Rotation.R0, false)
